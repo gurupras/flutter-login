@@ -13,7 +13,9 @@ dependencies:
     sdk: flutter
   logger: ^2.6.2
   liblogin_native:
-    path: ../liblogin_native
+    git:
+      url: https://github.com/gurupras/flutter-login-platform.git
+      ref: v0.1.1
   bloc: ^9.1.0
   flutter_bloc: ^9.1.1
   flutter_login: ^5.1.0
