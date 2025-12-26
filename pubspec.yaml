@@ -2,6 +2,7 @@ name: liblogin
 description: "A new Flutter package project."
 version: 0.0.1
 homepage:
+publish_to: none
 
 environment:
   sdk: ^3.10.4
@@ -12,17 +13,36 @@ dependencies:
     sdk: flutter
   liblogin_native:
     path: ../liblogin_native
+  bloc: ^9.1.0
+  flutter_bloc: ^9.1.1
+  flutter_login: ^5.1.0
+  google_sign_in: ^7.1.0
+  flutter_vector_icons: ^2.0.0
+  jwt_decoder: ^2.0.1
+  url_launcher: ^6.3.0
+  crypto: ^3.0.3
+  flutter_secure_storage: ^9.0.0
+  http: ^1.2.1
+  nanoid: ^1.0.0
+  device_info_plus: ^11.5.0
+  equatable: ^2.0.5
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^6.0.0
+  flutter_lints: ^2.0.0
+  mockito: ^5.4.4
+  build_runner: ^2.4.8
+  mocktail: ^1.0.4
+  flutter_secure_storage_platform_interface: ^1.1.2
+  bloc_test: ^10.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
 # The following section is specific to Flutter packages.
 flutter:
+  uses-material-design: true
 
   # To add assets to your package, add an assets section, like this:
   # assets:
