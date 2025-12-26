@@ -19,12 +19,17 @@ class JwtDecoderWrapper {
   Map<String, dynamic> decode(String token) => JwtDecoder.decode(token);
 }
 
+typedef OnLoginSuccess = void Function(String accessToken);
+typedef OnLoginError = void Function(Object error);
+
 class AuthService {
   final LoginConfig _config;
   final FlutterSecureStorage _secureStorage;
   late final FusionAuthClient _fusionAuthClient;
   final http.Client _httpClient;
   final JwtDecoderWrapper _jwtDecoder;
+  final OnLoginSuccess? _onLoginSuccess;
+  final OnLoginError? _onLoginError;
 
   static const String _deviceIDKey = 'deviceID';
   static const String _accessTokenKey = 'accessToken';
@@ -41,12 +46,16 @@ class AuthService {
       StreamController<bool>.broadcast();
   Stream<bool> get authRedirectStream => _authRedirectController.stream;
 
+  String? get currentAccessToken => _currentAccessToken;
+
   AuthService({
     required LoginConfig config,
     FlutterSecureStorage? secureStorage,
     http.Client? httpClient,
     JwtDecoderWrapper? jwtDecoder,
     FusionAuthClient? fusionAuthClient, // Add this for injection
+    OnLoginSuccess? onLoginSuccess,
+    OnLoginError? onLoginError,
   }) : _config = config,
        _secureStorage = secureStorage ?? const FlutterSecureStorage(),
        _httpClient = httpClient ?? http.Client(),
@@ -57,7 +66,9 @@ class AuthService {
              config: config,
              httpClient: httpClient ?? http.Client(),
            ),
-       _channel = const MethodChannel('me.gurupras.liblogin') {
+       _channel = const MethodChannel('me.gurupras.liblogin'),
+       _onLoginSuccess = onLoginSuccess,
+       _onLoginError = onLoginError {
     // Initialize with injected or default
     _channel.setMethodCallHandler(_handleMethodCall);
   }
@@ -92,6 +103,7 @@ class AuthService {
       if (code == null) {
         print('Authorization code not found in redirect URI');
         _authRedirectController.add(false);
+        _onLoginError?.call('Authorization code not found in redirect URI');
         return;
       }
 
@@ -101,9 +113,11 @@ class AuthService {
       );
       await _storeTokens(tokens);
       _authRedirectController.add(true);
+      _onLoginSuccess?.call(tokens.accessToken);
     } catch (e) {
       print('Failed to handle auth redirect: $e');
       _authRedirectController.add(false);
+      _onLoginError?.call(e);
     }
   }
 
@@ -112,9 +126,11 @@ class AuthService {
       final tokens = await _fusionAuthClient
           .resourceOwnerPasswordCredentialsGrant(username, password);
       await _storeTokens(tokens);
+      _onLoginSuccess?.call(tokens.accessToken);
       return true;
     } catch (e) {
       print('Login failed: $e');
+      _onLoginError?.call(e);
       return false;
     }
   }
@@ -129,13 +145,19 @@ class AuthService {
 
       if (response.statusCode == 200) {
         // After successful signup, attempt to log in to get tokens
-        return await login(username, password);
+        final bool loginSuccess = await login(username, password);
+        if (!loginSuccess) {
+          _onLoginError?.call('Login failed after successful signup');
+        }
+        return loginSuccess;
       } else {
         print('Sign up failed: ${response.body}');
+        _onLoginError?.call('Sign up failed: ${response.body}');
         return false;
       }
     } catch (e) {
       print('Sign up failed: $e');
+      _onLoginError?.call(e);
       return false;
     }
   }
@@ -226,6 +248,7 @@ class AuthService {
     if (_currentAccessToken != null &&
         !_jwtDecoder.isExpired(_currentAccessToken!)) {
       // Token is valid and not expired
+      _onLoginSuccess?.call(_currentAccessToken!);
       return true;
     } else if (_currentRefreshToken != null) {
       // Try to refresh the token
@@ -234,10 +257,12 @@ class AuthService {
           _currentRefreshToken!,
         );
         await _storeTokens(newTokens);
+        _onLoginSuccess?.call(newTokens.accessToken);
         return true;
       } catch (e) {
         print('Failed to refresh token: $e');
         await logout(); // Clear invalid tokens
+        _onLoginError?.call(e);
         return false;
       }
     } else {

@@ -18,8 +18,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       try {
         emit(AuthLoading());
         final success = await authService.login(event.username, event.password);
-        if (success) {
-          emit(AuthAuthenticated());
+        if (success && authService.currentAccessToken != null) {
+          emit(AuthAuthenticated(accessToken: authService.currentAccessToken!));
         } else {
           emit(AuthError(message: 'Login failed'));
         }
@@ -35,8 +35,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           event.username,
           event.password,
         );
-        if (success) {
-          emit(AuthAuthenticated());
+        if (success && authService.currentAccessToken != null) {
+          emit(AuthAuthenticated(accessToken: authService.currentAccessToken!));
         } else {
           emit(AuthError(message: 'Sign up failed'));
         }
@@ -72,8 +72,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       try {
         emit(AuthLoading());
         final isAuthenticated = await authService.checkLoginStatus();
-        if (isAuthenticated) {
-          emit(AuthAuthenticated());
+        if (isAuthenticated && authService.currentAccessToken != null) {
+          emit(AuthAuthenticated(accessToken: authService.currentAccessToken!));
         } else {
           emit(AuthUnauthenticated());
         }
