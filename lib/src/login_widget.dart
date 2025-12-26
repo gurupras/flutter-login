@@ -6,52 +6,51 @@ import 'package:liblogin/src/auth_bloc/auth_bloc.dart';
 import 'package:liblogin/src/auth_service.dart';
 
 class LoginPage extends StatelessWidget {
-  const LoginPage({super.key});
+  final String title;
+
+  const LoginPage({super.key, this.title = 'App'});
 
   @override
   Widget build(BuildContext context) {
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) {
-        // The parent widget should listen to AuthBloc states for success/failure
-        // No direct callbacks from LoginPage
+        // Parent listens for auth success/failure
       },
       child: FlutterLogin(
-        title: 'Filemingo', // This can be made configurable if needed
+        title: title,
         onLogin: (loginData) async {
-          BlocProvider.of<AuthBloc>(context).add(
+          context.read<AuthBloc>().add(
             AuthLogin(username: loginData.name, password: loginData.password),
           );
-          return null; // Handled by BlocListener
+          return null;
         },
         onSignup: (signupData) async {
-          BlocProvider.of<AuthBloc>(context).add(
+          context.read<AuthBloc>().add(
             AuthSignUp(
               username: signupData.name!,
               password: signupData.password!,
             ),
           );
-          return null; // Handled by BlocListener
+          return null;
         },
         onRecoverPassword: (email) async {
-          BlocProvider.of<AuthBloc>(context).add(AuthRecoverPassword(email: email));
-          return null; // Handled by BlocListener
+          context.read<AuthBloc>().add(AuthRecoverPassword(email: email));
+          return null;
         },
         loginProviders: [
           LoginProvider(
             icon: FontAwesome.google,
             label: 'Google',
             callback: () async {
-              final authService = RepositoryProvider.of<AuthService>(context);
+              final authService = context.read<AuthService>();
               final success = await authService.initiateGoogleLogin();
               if (!success) {
-                // The parent widget should listen to AuthBloc states for success/failure
-                // No direct callbacks from LoginPage
+                // Parent handles error via Bloc
               }
-              return null; // Handled by BlocListener
+              return null;
             },
           ),
         ],
-        // Removed onSubmitAnimationCompleted as it's now handled by callbacks
       ),
     );
   }

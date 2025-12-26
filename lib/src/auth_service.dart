@@ -19,8 +19,6 @@ class JwtDecoderWrapper {
   Map<String, dynamic> decode(String token) => JwtDecoder.decode(token);
 }
 
-
-
 class AuthService {
   final LoginConfig _config;
   final FlutterSecureStorage _secureStorage;
@@ -54,7 +52,6 @@ class AuthService {
     http.Client? httpClient,
     JwtDecoderWrapper? jwtDecoder,
     FusionAuthClient? fusionAuthClient, // Add this for injection
-
   }) : _config = config,
        _secureStorage = secureStorage ?? const FlutterSecureStorage(),
        _httpClient = httpClient ?? http.Client(),
@@ -100,6 +97,7 @@ class AuthService {
       if (code == null) {
         print('Authorization code not found in redirect URI');
         _authRedirectController.add(false);
+        await closeInAppWebView();
 
         return;
       }
@@ -109,10 +107,11 @@ class AuthService {
         codeVerifier!,
       );
       await _storeTokens(tokens);
-
+      await closeInAppWebView();
     } catch (e) {
       print('Failed to handle auth redirect: $e');
       _authRedirectController.add(false);
+      await closeInAppWebView();
     }
   }
 
@@ -140,9 +139,7 @@ class AuthService {
       if (response.statusCode == 200) {
         // After successful signup, attempt to log in to get tokens
         final bool loginSuccess = await login(username, password);
-        if (!loginSuccess) {
-
-        }
+        if (!loginSuccess) {}
         return loginSuccess;
       } else {
         print('Sign up failed: ${response.body}');
@@ -161,7 +158,10 @@ class AuthService {
     try {
       codeVerifier = AuthService.generateCodeVerifier();
       final codeChallenge = AuthService.generateCodeChallenge(codeVerifier!);
-      await _secureStorage.write(key: 'code_verifier', value: codeVerifier); // Add this line
+      await _secureStorage.write(
+        key: 'code_verifier',
+        value: codeVerifier,
+      ); // Add this line
 
       final Uri authUri =
           Uri.parse('https://${_config.loginDomain}/oauth2/authorize').replace(
@@ -178,7 +178,7 @@ class AuthService {
           );
 
       if (await canLaunchUrl(authUri)) {
-        await launchUrl(authUri, mode: LaunchMode.externalApplication);
+        await launchUrl(authUri, mode: LaunchMode.inAppWebView);
         return true;
       } else {
         print('Could not launch $authUri');
@@ -246,18 +246,25 @@ class AuthService {
     try {
       final decodedToken = _jwtDecoder.decode(_currentAccessToken!);
       final exp = decodedToken['exp'] as int;
-      final expirationDateTime =
-          DateTime.fromMillisecondsSinceEpoch(exp * 1000);
+      final expirationDateTime = DateTime.fromMillisecondsSinceEpoch(
+        exp * 1000,
+      );
       final now = DateTime.now();
 
-      final refreshTime = expirationDateTime.subtract(const Duration(minutes: 15));
+      final refreshTime = expirationDateTime.subtract(
+        const Duration(minutes: 15),
+      );
       final durationUntilRefresh = refreshTime.difference(now);
 
       if (durationUntilRefresh.isNegative) {
-        print('Access token already expired or close to expiration. Attempting immediate refresh.');
+        print(
+          'Access token already expired or close to expiration. Attempting immediate refresh.',
+        );
         _attemptTokenRefresh();
       } else {
-        print('Scheduling token refresh in ${durationUntilRefresh.inMinutes} minutes.');
+        print(
+          'Scheduling token refresh in ${durationUntilRefresh.inMinutes} minutes.',
+        );
         _refreshTokenTimer = Timer(durationUntilRefresh, () {
           print('Scheduled token refresh triggered.');
           _attemptTokenRefresh();
