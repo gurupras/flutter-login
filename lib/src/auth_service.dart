@@ -178,7 +178,7 @@ class AuthService {
           );
 
       if (await canLaunchUrl(authUri)) {
-        await launchUrl(authUri, mode: LaunchMode.inAppWebView);
+        await launchUrl(authUri, mode: LaunchMode.externalApplication);
         return true;
       } else {
         print('Could not launch $authUri');
