@@ -11,6 +11,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  logger: ^2.6.2
   liblogin_native:
     path: ../liblogin_native
   bloc: ^9.1.0

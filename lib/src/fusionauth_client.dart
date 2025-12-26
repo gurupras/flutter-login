@@ -10,14 +10,12 @@ class FusionAuthClient {
   final String redirectUri;
   final http.Client _client;
 
-  FusionAuthClient({
-    required LoginConfig config,
-    http.Client? httpClient,
-  })  : domain = config.loginDomain,
-        clientID = config.loginClientID,
-        tenantID = config.loginTenantID,
-        redirectUri = config.loginRedirectURI,
-        _client = httpClient ?? http.Client();
+  FusionAuthClient({required LoginConfig config, http.Client? httpClient})
+    : domain = config.loginDomain,
+      clientID = config.loginClientID,
+      tenantID = config.loginTenantID,
+      redirectUri = config.loginRedirectURI,
+      _client = httpClient ?? http.Client();
 
   Future<TokenResponse> resourceOwnerPasswordCredentialsGrant(
     String username,
@@ -65,7 +63,9 @@ class FusionAuthClient {
   }
 
   Future<TokenResponse> exchangeAuthorizationCode(
-      String code, String codeVerifier) async {
+    String code,
+    String codeVerifier,
+  ) async {
     final result = await _client.post(
       Uri.parse('https://$domain/oauth2/token'),
       headers: {'content-type': 'application/x-www-form-urlencoded'},

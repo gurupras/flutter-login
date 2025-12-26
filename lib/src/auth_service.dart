@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/services.dart';
 import 'package:nanoid/nanoid.dart';
+import 'package:logger/logger.dart';
 
 import 'package:liblogin/src/auth_models.dart';
 import 'package:liblogin/src/fusionauth_client.dart';
@@ -30,6 +31,18 @@ class AuthService {
   static const String _accessTokenKey = 'accessToken';
   static const String _refreshTokenKey = 'refreshToken';
   static const String _userIDKey = 'userID';
+
+  final log = Logger(
+    printer: PrefixPrinter(
+      PrettyPrinter(),
+      debug: '[liblogin:AuthService] D/',
+      warning: '[liblogin:AuthService] W/',
+      error: '[liblogin:AuthService] E/',
+      info: '[liblogin:AuthService] I/',
+      fatal: '[liblogin:AuthService] F/',
+      trace: '[liblogin:AuthService] T/',
+    ),
+  );
 
   String? _currentAccessToken;
   String? _currentRefreshToken;
@@ -82,8 +95,16 @@ class AuthService {
   Future<dynamic> _handleMethodCall(MethodCall call) async {
     switch (call.method) {
       case 'handleAuthRedirect':
-        final String uriString = call.arguments;
-        final Uri uri = Uri.parse(uriString);
+        log.i('Received handleAuthRedirect MethodCall from native code');
+        // call.arguments is a Map
+        final Map<dynamic, dynamic> args =
+            call.arguments as Map<dynamic, dynamic>;
+
+        // extract the "url" key
+        final String urlString = args['url'] as String;
+
+        // parse it
+        final Uri uri = Uri.parse(urlString);
         await _processAuthRedirect(uri);
         break;
       default:
@@ -95,23 +116,23 @@ class AuthService {
     try {
       final String? code = uri.queryParameters['code'];
       if (code == null) {
-        print('Authorization code not found in redirect URI');
+        log.w('Authorization code not found in redirect URI');
         _authRedirectController.add(false);
-        await closeInAppWebView();
 
         return;
       }
 
+      final codeVerifier = await _secureStorage.read(key: 'code_verifier');
       final tokens = await _fusionAuthClient.exchangeAuthorizationCode(
         code,
         codeVerifier!,
       );
       await _storeTokens(tokens);
-      await closeInAppWebView();
+      log.i('Exchanged code for tokens and stored them successfully');
+      _authRedirectController.add(true);
     } catch (e) {
-      print('Failed to handle auth redirect: $e');
+      log.e('Failed to handle auth redirect: $e');
       _authRedirectController.add(false);
-      await closeInAppWebView();
     }
   }
 
@@ -123,7 +144,7 @@ class AuthService {
 
       return true;
     } catch (e) {
-      print('Login failed: $e');
+      log.e('Login failed: $e');
       return false;
     }
   }
@@ -142,12 +163,12 @@ class AuthService {
         if (!loginSuccess) {}
         return loginSuccess;
       } else {
-        print('Sign up failed: ${response.body}');
+        log.e('Sign up failed: ${response.body}');
 
         return false;
       }
     } catch (e) {
-      print('Sign up failed: $e');
+      log.e('Sign up failed: $e');
       return false;
     }
   }
@@ -181,11 +202,11 @@ class AuthService {
         await launchUrl(authUri, mode: LaunchMode.externalApplication);
         return true;
       } else {
-        print('Could not launch $authUri');
+        log.w('Could not launch $authUri');
         return false;
       }
     } catch (e) {
-      print('Failed to initiate Google login: $e');
+      log.e('Failed to initiate Google login: $e');
       return false;
     }
   }
@@ -206,7 +227,7 @@ class AuthService {
 
   Future<bool> recoverPassword(String email) async {
     // This is a placeholder. Actual implementation would involve FusionAuth API for password recovery.
-    print('Password recovery requested for: $email');
+    log.i('Password recovery requested for: $email');
     await Future.delayed(const Duration(seconds: 1));
     return true;
   }
@@ -257,32 +278,32 @@ class AuthService {
       final durationUntilRefresh = refreshTime.difference(now);
 
       if (durationUntilRefresh.isNegative) {
-        print(
+        log.i(
           'Access token already expired or close to expiration. Attempting immediate refresh.',
         );
         _attemptTokenRefresh();
       } else {
-        print(
+        log.i(
           'Scheduling token refresh in ${durationUntilRefresh.inMinutes} minutes.',
         );
         _refreshTokenTimer = Timer(durationUntilRefresh, () {
-          print('Scheduled token refresh triggered.');
+          log.i('Scheduled token refresh triggered.');
           _attemptTokenRefresh();
         });
       }
     } catch (e) {
-      print('Error scheduling token refresh: $e');
+      log.e('Error scheduling token refresh: $e');
     }
   }
 
   Future<void> _attemptTokenRefresh() async {
     if (_isRefreshing) {
-      print('Refresh already in progress. Skipping.');
+      log.d('Refresh already in progress. Skipping.');
       return;
     }
     _isRefreshing = true;
     try {
-      print('Attempting token refresh...');
+      log.i('Attempting token refresh...');
       await checkLoginStatus();
     } finally {
       _isRefreshing = false;
@@ -310,7 +331,7 @@ class AuthService {
 
         return true;
       } catch (e) {
-        print('Failed to refresh token: $e');
+        log.e('Failed to refresh token: $e');
         await logout(); // Clear invalid tokens
 
         return false;
