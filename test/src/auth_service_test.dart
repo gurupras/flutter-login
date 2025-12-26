@@ -10,6 +10,7 @@ import 'package:liblogin/src/fusionauth_client.dart';
 import 'package:liblogin/src/login_config.dart';
 import 'package:liblogin/src/auth_models.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:fake_async/fake_async.dart';
 
 import 'auth_service_test.mocks.dart';
 
@@ -29,6 +30,7 @@ class MockUrlLauncher {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   group('AuthService', () {
+    fakeAsync((async) {
     late MockFlutterSecureStorage mockSecureStorage;
     late MockClient mockHttpClient;
     late MockJwtDecoderWrapper mockJwtDecoder;
@@ -52,6 +54,12 @@ void main() {
         loginRedirectURI: 'https://example.com/callback',
         googleIdentityProviderID: 'google-idp',
       );
+
+      // Add default stubs for JwtDecoderWrapper
+      when(mockJwtDecoder.decode(any)).thenReturn({
+        'exp': DateTime.now().add(const Duration(hours: 1)).millisecondsSinceEpoch ~/ 1000, // Future expiration
+      });
+      when(mockJwtDecoder.isExpired(any)).thenReturn(false); // Not expired by default
 
       // Mock the MethodChannel constructor for liblogin
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -103,6 +111,7 @@ void main() {
           .thenAnswer((_) async => {});
 
       await authService.init();
+      async.elapse(Duration.zero); // Add this line
 
       verify(mockSecureStorage.read(key: 'deviceID')).called(1);
       verify(mockSecureStorage.write(key: 'deviceID', value: anyNamed('value')))
@@ -113,6 +122,7 @@ void main() {
       when(mockSecureStorage.read(key: 'deviceID')).thenAnswer((_) async => 'existing_device_id');
 
       await authService.init();
+      async.elapse(Duration.zero); // Add this line
 
       verify(mockSecureStorage.read(key: 'deviceID')).called(1);
       verifyNever(mockSecureStorage.write(key: 'deviceID', value: anyNamed('value')));
@@ -132,6 +142,7 @@ void main() {
           .thenAnswer((_) async => {});
 
       final result = await authService.login('user', 'pass');
+      async.elapse(const Duration(hours: 1)); // Elapse time for token refresh timer
 
       expect(result, isTrue);
       verify(mockFusionAuthClient.resourceOwnerPasswordCredentialsGrant('user', 'pass'))
@@ -146,6 +157,7 @@ void main() {
           .thenThrow('Login failed');
 
       final result = await authService.login('user', 'pass');
+      async.elapse(Duration.zero); // Add this line
 
       expect(result, isFalse);
       verify(mockFusionAuthClient.resourceOwnerPasswordCredentialsGrant('user', 'pass'))
@@ -169,6 +181,7 @@ void main() {
           .thenAnswer((_) async => {});
 
       final result = await authService.signUp('newuser', 'newpass');
+      async.elapse(const Duration(hours: 1)); // Elapse time for token refresh timer
 
       expect(result, isTrue);
       verify(mockHttpClient.post(
@@ -185,6 +198,7 @@ void main() {
           .thenAnswer((_) async => http.Response('Error', 400));
 
       final result = await authService.signUp('newuser', 'newpass');
+      async.elapse(Duration.zero); // Add this line
 
       expect(result, isFalse);
       verify(mockHttpClient.post(any, headers: anyNamed('headers'), body: anyNamed('body')))
@@ -194,6 +208,7 @@ void main() {
 
     test('recoverPassword returns true (placeholder)', () async {
       final result = await authService.recoverPassword('email@example.com');
+      async.elapse(Duration.zero); // Add this line
       expect(result, isTrue);
     });
 
@@ -201,6 +216,7 @@ void main() {
       when(mockSecureStorage.delete(key: anyNamed('key'))).thenAnswer((_) async => {});
 
       await authService.logout();
+      async.elapse(Duration.zero); // Add this line
 
       verify(mockSecureStorage.delete(key: 'accessToken')).called(1);
       verify(mockSecureStorage.delete(key: 'refreshToken')).called(1);
@@ -215,6 +231,7 @@ void main() {
         when(mockJwtDecoder.isExpired('valid_access_token')).thenReturn(false);
 
         final result = await authService.checkLoginStatus();
+        async.elapse(const Duration(hours: 1)); // Elapse time for token refresh timer
 
         expect(result, isTrue);
         verify(mockSecureStorage.read(key: 'accessToken')).called(1);
@@ -241,6 +258,7 @@ void main() {
             .thenAnswer((_) async => {});
 
         final result = await authService.checkLoginStatus();
+        async.elapse(const Duration(hours: 1)); // Elapse time for token refresh timer
 
         expect(result, isTrue);
         verify(mockSecureStorage.read(key: 'accessToken')).called(1);
@@ -260,6 +278,7 @@ void main() {
         when(mockSecureStorage.delete(key: anyNamed('key'))).thenAnswer((_) async => {});
 
         final result = await authService.checkLoginStatus();
+        async.elapse(Duration.zero); // Add this line
 
         expect(result, isFalse);
         verify(mockSecureStorage.read(key: 'accessToken')).called(1);
@@ -276,6 +295,7 @@ void main() {
         when(mockSecureStorage.read(key: 'userID')).thenAnswer((_) async => null);
 
         final result = await authService.checkLoginStatus();
+        async.elapse(Duration.zero); // Add this line
 
         expect(result, isFalse);
         verify(mockSecureStorage.read(key: 'accessToken')).called(1);
@@ -290,6 +310,7 @@ void main() {
             .thenAnswer((_) async => {});
 
         final result = await authService.initiateGoogleLogin();
+        async.elapse(Duration.zero); // Add this line
 
         expect(result, isTrue);
         verify(mockSecureStorage.write(key: 'code_verifier', value: anyNamed('value'))).called(1);
@@ -308,6 +329,7 @@ void main() {
         });
 
         final result = await authService.initiateGoogleLogin();
+        async.elapse(Duration.zero); // Add this line
 
         expect(result, isFalse);
         verify(mockSecureStorage.write(key: 'code_verifier', value: anyNamed('value'))).called(1); // Still called, but launch fails
@@ -316,6 +338,7 @@ void main() {
 
     test('_generateCodeVerifier generates a non-empty string', () {
       final codeVerifier = AuthService.generateCodeVerifier();
+      async.elapse(Duration.zero); // Add this line
       expect(codeVerifier, isNotEmpty);
       expect(codeVerifier.length, greaterThanOrEqualTo(43)); // PKCE verifier length
     });
@@ -323,6 +346,7 @@ void main() {
     test('_generateCodeChallenge generates a non-empty string', () {
       final codeVerifier = 'test_code_verifier';
       final codeChallenge = AuthService.generateCodeChallenge(codeVerifier);
+      async.elapse(Duration.zero); // Add this line
       expect(codeChallenge, isNotEmpty);
       expect(codeChallenge.length, 43); // PKCE challenge length
     });
@@ -358,6 +382,8 @@ void main() {
           (ByteData? data) {},
         );
 
+        async.elapse(const Duration(hours: 1)); // Elapse enough time for the timer
+
         expect(await completer.future, isTrue);
         verify(mockFusionAuthClient.exchangeAuthorizationCode('auth_code', 'mock_code_verifier')).called(1);
         verify(mockSecureStorage.write(key: 'accessToken', value: 'access')).called(1);
@@ -378,6 +404,7 @@ void main() {
           ),
           (ByteData? data) {},
         );
+        async.elapse(Duration.zero); // Add this line
 
         expect(await completer.future, isFalse);
         verifyNever(mockFusionAuthClient.exchangeAuthorizationCode(any, any));
@@ -403,6 +430,7 @@ void main() {
           ),
           (ByteData? data) {},
         );
+        async.elapse(Duration.zero); // Add this line
 
         expect(await completer.future, isFalse);
         verify(mockFusionAuthClient.exchangeAuthorizationCode('auth_code', 'mock_code_verifier')).called(1);
@@ -410,4 +438,6 @@ void main() {
       });
     });
   });
+});
 }
+

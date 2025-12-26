@@ -6,20 +6,14 @@ import 'package:liblogin/src/auth_bloc/auth_bloc.dart';
 import 'package:liblogin/src/auth_service.dart';
 
 class LoginPage extends StatelessWidget {
-  final OnLoginSuccess? onLoginSuccess;
-  final OnLoginError? onLoginFailure;
-
-  const LoginPage({super.key, this.onLoginSuccess, this.onLoginFailure});
+  const LoginPage({super.key});
 
   @override
   Widget build(BuildContext context) {
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) {
-        if (state is AuthAuthenticated) {
-          onLoginSuccess?.call(state.accessToken);
-        } else if (state is AuthError) {
-          onLoginFailure?.call(state.message);
-        }
+        // The parent widget should listen to AuthBloc states for success/failure
+        // No direct callbacks from LoginPage
       },
       child: FlutterLogin(
         title: 'Filemingo', // This can be made configurable if needed
@@ -50,7 +44,8 @@ class LoginPage extends StatelessWidget {
               final authService = RepositoryProvider.of<AuthService>(context);
               final success = await authService.initiateGoogleLogin();
               if (!success) {
-                onLoginFailure?.call('Failed to initiate Google login');
+                // The parent widget should listen to AuthBloc states for success/failure
+                // No direct callbacks from LoginPage
               }
               return null; // Handled by BlocListener
             },

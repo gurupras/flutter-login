@@ -19,8 +19,7 @@ class JwtDecoderWrapper {
   Map<String, dynamic> decode(String token) => JwtDecoder.decode(token);
 }
 
-typedef OnLoginSuccess = void Function(String accessToken);
-typedef OnLoginError = void Function(Object error);
+
 
 class AuthService {
   final LoginConfig _config;
@@ -28,8 +27,6 @@ class AuthService {
   late final FusionAuthClient _fusionAuthClient;
   final http.Client _httpClient;
   final JwtDecoderWrapper _jwtDecoder;
-  final OnLoginSuccess? _onLoginSuccess;
-  final OnLoginError? _onLoginError;
 
   static const String _deviceIDKey = 'deviceID';
   static const String _accessTokenKey = 'accessToken';
@@ -48,14 +45,16 @@ class AuthService {
 
   String? get currentAccessToken => _currentAccessToken;
 
+  Timer? _refreshTokenTimer;
+  bool _isRefreshing = false;
+
   AuthService({
     required LoginConfig config,
     FlutterSecureStorage? secureStorage,
     http.Client? httpClient,
     JwtDecoderWrapper? jwtDecoder,
     FusionAuthClient? fusionAuthClient, // Add this for injection
-    OnLoginSuccess? onLoginSuccess,
-    OnLoginError? onLoginError,
+
   }) : _config = config,
        _secureStorage = secureStorage ?? const FlutterSecureStorage(),
        _httpClient = httpClient ?? http.Client(),
@@ -66,10 +65,7 @@ class AuthService {
              config: config,
              httpClient: httpClient ?? http.Client(),
            ),
-       _channel = const MethodChannel('me.gurupras.liblogin'),
-       _onLoginSuccess = onLoginSuccess,
-       _onLoginError = onLoginError {
-    // Initialize with injected or default
+       _channel = const MethodChannel('me.gurupras.liblogin') {
     _channel.setMethodCallHandler(_handleMethodCall);
   }
 
@@ -83,6 +79,7 @@ class AuthService {
 
   void dispose() {
     _authRedirectController.close();
+    _refreshTokenTimer?.cancel();
   }
 
   Future<dynamic> _handleMethodCall(MethodCall call) async {
@@ -103,7 +100,7 @@ class AuthService {
       if (code == null) {
         print('Authorization code not found in redirect URI');
         _authRedirectController.add(false);
-        _onLoginError?.call('Authorization code not found in redirect URI');
+
         return;
       }
 
@@ -112,12 +109,10 @@ class AuthService {
         codeVerifier!,
       );
       await _storeTokens(tokens);
-      _authRedirectController.add(true);
-      _onLoginSuccess?.call(tokens.accessToken);
+
     } catch (e) {
       print('Failed to handle auth redirect: $e');
       _authRedirectController.add(false);
-      _onLoginError?.call(e);
     }
   }
 
@@ -126,11 +121,10 @@ class AuthService {
       final tokens = await _fusionAuthClient
           .resourceOwnerPasswordCredentialsGrant(username, password);
       await _storeTokens(tokens);
-      _onLoginSuccess?.call(tokens.accessToken);
+
       return true;
     } catch (e) {
       print('Login failed: $e');
-      _onLoginError?.call(e);
       return false;
     }
   }
@@ -147,17 +141,16 @@ class AuthService {
         // After successful signup, attempt to log in to get tokens
         final bool loginSuccess = await login(username, password);
         if (!loginSuccess) {
-          _onLoginError?.call('Login failed after successful signup');
+
         }
         return loginSuccess;
       } else {
         print('Sign up failed: ${response.body}');
-        _onLoginError?.call('Sign up failed: ${response.body}');
+
         return false;
       }
     } catch (e) {
       print('Sign up failed: $e');
-      _onLoginError?.call(e);
       return false;
     }
   }
@@ -225,6 +218,7 @@ class AuthService {
     _currentAccessToken = null;
     _currentRefreshToken = null;
     _currentUserID = null;
+    _refreshTokenTimer?.cancel();
   }
 
   Future<void> _storeTokens(TokenResponse tokens) async {
@@ -238,6 +232,54 @@ class AuthService {
       value: tokens.refreshToken,
     );
     await _secureStorage.write(key: _userIDKey, value: tokens.userID);
+
+    _scheduleTokenRefresh();
+  }
+
+  void _scheduleTokenRefresh() {
+    _refreshTokenTimer?.cancel();
+
+    if (_currentAccessToken == null) {
+      return;
+    }
+
+    try {
+      final decodedToken = _jwtDecoder.decode(_currentAccessToken!);
+      final exp = decodedToken['exp'] as int;
+      final expirationDateTime =
+          DateTime.fromMillisecondsSinceEpoch(exp * 1000);
+      final now = DateTime.now();
+
+      final refreshTime = expirationDateTime.subtract(const Duration(minutes: 15));
+      final durationUntilRefresh = refreshTime.difference(now);
+
+      if (durationUntilRefresh.isNegative) {
+        print('Access token already expired or close to expiration. Attempting immediate refresh.');
+        _attemptTokenRefresh();
+      } else {
+        print('Scheduling token refresh in ${durationUntilRefresh.inMinutes} minutes.');
+        _refreshTokenTimer = Timer(durationUntilRefresh, () {
+          print('Scheduled token refresh triggered.');
+          _attemptTokenRefresh();
+        });
+      }
+    } catch (e) {
+      print('Error scheduling token refresh: $e');
+    }
+  }
+
+  Future<void> _attemptTokenRefresh() async {
+    if (_isRefreshing) {
+      print('Refresh already in progress. Skipping.');
+      return;
+    }
+    _isRefreshing = true;
+    try {
+      print('Attempting token refresh...');
+      await checkLoginStatus();
+    } finally {
+      _isRefreshing = false;
+    }
   }
 
   Future<bool> checkLoginStatus() async {
@@ -248,7 +290,8 @@ class AuthService {
     if (_currentAccessToken != null &&
         !_jwtDecoder.isExpired(_currentAccessToken!)) {
       // Token is valid and not expired
-      _onLoginSuccess?.call(_currentAccessToken!);
+
+      _scheduleTokenRefresh();
       return true;
     } else if (_currentRefreshToken != null) {
       // Try to refresh the token
@@ -257,12 +300,12 @@ class AuthService {
           _currentRefreshToken!,
         );
         await _storeTokens(newTokens);
-        _onLoginSuccess?.call(newTokens.accessToken);
+
         return true;
       } catch (e) {
         print('Failed to refresh token: $e');
         await logout(); // Clear invalid tokens
-        _onLoginError?.call(e);
+
         return false;
       }
     } else {
