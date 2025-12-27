@@ -15,7 +15,8 @@ void main() {
 
     setUp(() {
       mockAuthService = MockAuthService();
-      when(mockAuthService.authRedirectStream).thenAnswer((_) => Stream.empty());
+      when(mockAuthService.authRedirectStream)
+          .thenAnswer((_) => const Stream.empty());
     });
 
     blocTest<AuthBloc, AuthState>(
@@ -29,11 +30,14 @@ void main() {
       build: () {
         when(mockAuthService.login('test@example.com', 'password'))
             .thenAnswer((_) async => true);
-        when(mockAuthService.currentAccessToken).thenReturn('mock_access_token');
+        when(mockAuthService.currentAccessToken)
+            .thenReturn('mock_access_token');
         return AuthBloc(authService: mockAuthService);
       },
-      act: (bloc) => bloc.add(AuthLogin(username: 'test@example.com', password: 'password')),
-      expect: () => [AuthLoading(), AuthAuthenticated(accessToken: 'mock_access_token')],
+      act: (bloc) =>
+          bloc.add(AuthLogin(username: 'test@example.com', password: 'password')),
+      expect: () =>
+          [AuthLoading(), AuthAuthenticated(accessToken: 'mock_access_token')],
       verify: (_) {
         verify(mockAuthService.login('test@example.com', 'password')).called(1);
       },
@@ -46,10 +50,12 @@ void main() {
             .thenAnswer((_) async => false);
         return AuthBloc(authService: mockAuthService);
       },
-      act: (bloc) => bloc.add(AuthLogin(username: 'test@example.com', password: 'wrong_password')),
+      act: (bloc) => bloc
+          .add(AuthLogin(username: 'test@example.com', password: 'wrong_password')),
       expect: () => [AuthLoading(), AuthError(message: 'Login failed')],
       verify: (_) {
-        verify(mockAuthService.login('test@example.com', 'wrong_password')).called(1);
+        verify(mockAuthService.login('test@example.com', 'wrong_password'))
+            .called(1);
       },
     );
 
@@ -60,8 +66,10 @@ void main() {
             .thenThrow(Exception('Network error'));
         return AuthBloc(authService: mockAuthService);
       },
-      act: (bloc) => bloc.add(AuthLogin(username: 'test@example.com', password: 'password')),
-      expect: () => [AuthLoading(), AuthError(message: 'Exception: Network error')],
+      act: (bloc) =>
+          bloc.add(AuthLogin(username: 'test@example.com', password: 'password')),
+      expect: () =>
+          [AuthLoading(), AuthError(message: 'Exception: Network error')],
       verify: (_) {
         verify(mockAuthService.login('test@example.com', 'password')).called(1);
       },
@@ -72,13 +80,17 @@ void main() {
       build: () {
         when(mockAuthService.signUp('new@example.com', 'new_password'))
             .thenAnswer((_) async => true);
-        when(mockAuthService.currentAccessToken).thenReturn('mock_access_token');
+        when(mockAuthService.currentAccessToken)
+            .thenReturn('mock_access_token');
         return AuthBloc(authService: mockAuthService);
       },
-      act: (bloc) => bloc.add(AuthSignUp(username: 'new@example.com', password: 'new_password')),
-      expect: () => [AuthLoading(), AuthAuthenticated(accessToken: 'mock_access_token')],
+      act: (bloc) => bloc
+          .add(AuthSignUp(username: 'new@example.com', password: 'new_password')),
+      expect: () =>
+          [AuthLoading(), AuthAuthenticated(accessToken: 'mock_access_token')],
       verify: (_) {
-        verify(mockAuthService.signUp('new@example.com', 'new_password')).called(1);
+        verify(mockAuthService.signUp('new@example.com', 'new_password'))
+            .called(1);
       },
     );
 
@@ -89,10 +101,12 @@ void main() {
             .thenAnswer((_) async => false);
         return AuthBloc(authService: mockAuthService);
       },
-      act: (bloc) => bloc.add(AuthSignUp(username: 'new@example.com', password: 'new_password')),
+      act: (bloc) => bloc
+          .add(AuthSignUp(username: 'new@example.com', password: 'new_password')),
       expect: () => [AuthLoading(), AuthError(message: 'Sign up failed')],
       verify: (_) {
-        verify(mockAuthService.signUp('new@example.com', 'new_password')).called(1);
+        verify(mockAuthService.signUp('new@example.com', 'new_password'))
+            .called(1);
       },
     );
 
@@ -106,7 +120,8 @@ void main() {
       act: (bloc) => bloc.add(AuthRecoverPassword(email: 'recover@example.com')),
       expect: () => [AuthLoading(), AuthRecoverPasswordSuccess()],
       verify: (_) {
-        verify(mockAuthService.recoverPassword('recover@example.com')).called(1);
+        verify(mockAuthService.recoverPassword('recover@example.com'))
+            .called(1);
       },
     );
 
@@ -118,9 +133,11 @@ void main() {
         return AuthBloc(authService: mockAuthService);
       },
       act: (bloc) => bloc.add(AuthRecoverPassword(email: 'recover@example.com')),
-      expect: () => [AuthLoading(), AuthError(message: 'Password recovery failed')],
+      expect: () =>
+          [AuthLoading(), AuthError(message: 'Password recovery failed')],
       verify: (_) {
-        verify(mockAuthService.recoverPassword('recover@example.com')).called(1);
+        verify(mockAuthService.recoverPassword('recover@example.com'))
+            .called(1);
       },
     );
 
@@ -141,11 +158,13 @@ void main() {
       'emits [AuthLoading, AuthAuthenticated] when AuthCheckStatus is authenticated',
       build: () {
         when(mockAuthService.checkLoginStatus()).thenAnswer((_) async => true);
-        when(mockAuthService.currentAccessToken).thenReturn('mock_access_token');
+        when(mockAuthService.currentAccessToken)
+            .thenReturn('mock_access_token');
         return AuthBloc(authService: mockAuthService);
       },
       act: (bloc) => bloc.add(AuthCheckStatus()),
-      expect: () => [AuthLoading(), AuthAuthenticated(accessToken: 'mock_access_token')],
+      expect: () =>
+          [AuthLoading(), AuthAuthenticated(accessToken: 'mock_access_token')],
       verify: (_) {
         verify(mockAuthService.checkLoginStatus()).called(1);
       },
@@ -168,14 +187,18 @@ void main() {
       'adds AuthCheckStatus when authRedirectStream emits true',
       build: () {
         final authRedirectController = StreamController<bool>();
-        when(mockAuthService.authRedirectStream).thenAnswer((_) => authRedirectController.stream);
-        when(mockAuthService.checkLoginStatus()).thenAnswer((_) async => true); // Mock for AuthCheckStatus
-        when(mockAuthService.currentAccessToken).thenReturn('mock_access_token');
+        when(mockAuthService.authRedirectStream)
+            .thenAnswer((_) => authRedirectController.stream);
+        when(mockAuthService.checkLoginStatus())
+            .thenAnswer((_) async => true); // Mock for AuthCheckStatus
+        when(mockAuthService.currentAccessToken)
+            .thenReturn('mock_access_token');
         final bloc = AuthBloc(authService: mockAuthService);
         authRedirectController.add(true);
         return bloc;
       },
-      expect: () => [AuthLoading(), AuthAuthenticated(accessToken: 'mock_access_token')],
+      expect: () =>
+          [AuthLoading(), AuthAuthenticated(accessToken: 'mock_access_token')],
       verify: (_) {
         verify(mockAuthService.checkLoginStatus()).called(1);
       },
@@ -185,8 +208,10 @@ void main() {
       'does not add AuthCheckStatus when authRedirectStream emits false',
       build: () {
         final authRedirectController = StreamController<bool>();
-        when(mockAuthService.authRedirectStream).thenAnswer((_) => authRedirectController.stream);
-        when(mockAuthService.checkLoginStatus()).thenAnswer((_) async => true); // Mock for AuthCheckStatus
+        when(mockAuthService.authRedirectStream)
+            .thenAnswer((_) => authRedirectController.stream);
+        when(mockAuthService.checkLoginStatus())
+            .thenAnswer((_) async => true); // Mock for AuthCheckStatus
         final bloc = AuthBloc(authService: mockAuthService);
         authRedirectController.add(false);
         return bloc;

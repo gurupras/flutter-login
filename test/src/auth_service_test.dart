@@ -37,14 +37,12 @@ void main() {
       late MockFusionAuthClient mockFusionAuthClient;
       late LoginConfig config;
       late AuthService authService;
-      late MockMethodChannel mockMethodChannel;
 
       setUp(() {
         mockSecureStorage = MockFlutterSecureStorage();
         mockHttpClient = MockClient();
         mockJwtDecoder = MockJwtDecoderWrapper();
         mockFusionAuthClient = MockFusionAuthClient();
-        mockMethodChannel = MockMethodChannel();
 
         config = LoginConfig(
           loginDomain: 'example.com',
@@ -506,7 +504,7 @@ void main() {
       });
 
       test('_generateCodeChallenge generates a non-empty string', () {
-        final codeVerifier = 'test_code_verifier';
+        const codeVerifier = 'test_code_verifier';
         final codeChallenge = AuthService.generateCodeChallenge(codeVerifier);
         async.elapse(Duration.zero); // Add this line
         expect(codeChallenge, isNotEmpty);

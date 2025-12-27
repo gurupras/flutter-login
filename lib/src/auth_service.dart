@@ -5,8 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
 import 'package:http/http.dart' as http;
-import 'package:url_launcher/url_launcher.dart';
-import 'package:flutter/services.dart';
+import 'package:liblogin_native/liblogin_native.dart';
 import 'package:nanoid/nanoid.dart';
 import 'package:logger/logger.dart';
 
@@ -46,10 +45,8 @@ class AuthService {
 
   String? _currentAccessToken;
   String? _currentRefreshToken;
-  String? _currentUserID;
   String? _currentDeviceID;
 
-  final MethodChannel _channel;
   final StreamController<bool> _authRedirectController =
       StreamController<bool>.broadcast();
   Stream<bool> get authRedirectStream => _authRedirectController.stream;
@@ -65,18 +62,22 @@ class AuthService {
     http.Client? httpClient,
     JwtDecoderWrapper? jwtDecoder,
     FusionAuthClient? fusionAuthClient, // Add this for injection
-  }) : _config = config,
-       _secureStorage = secureStorage ?? const FlutterSecureStorage(),
-       _httpClient = httpClient ?? http.Client(),
-       _jwtDecoder = jwtDecoder ?? JwtDecoderWrapper(),
-       _fusionAuthClient =
-           fusionAuthClient ??
-           FusionAuthClient(
-             config: config,
-             httpClient: httpClient ?? http.Client(),
-           ),
-       _channel = const MethodChannel('me.gurupras.liblogin') {
-    _channel.setMethodCallHandler(_handleMethodCall);
+  })  : _config = config,
+        _secureStorage = secureStorage ?? const FlutterSecureStorage(),
+        _httpClient = httpClient ?? http.Client(),
+        _jwtDecoder = jwtDecoder ?? JwtDecoderWrapper(),
+        _fusionAuthClient = fusionAuthClient ??
+            FusionAuthClient(
+              config: config,
+              httpClient: httpClient ?? http.Client(),
+            ) {
+    LibloginNative().setAuthRedirectHandler((url) => _handleAuthRedirect(url));
+  }
+
+  Future<void> _handleAuthRedirect(String urlString) async {
+    log.i('Received handleAuthRedirect from native code with URL: $urlString');
+    final Uri uri = Uri.parse(urlString);
+    await _processAuthRedirect(uri);
   }
 
   Future<void> init() async {
@@ -90,26 +91,6 @@ class AuthService {
   void dispose() {
     _authRedirectController.close();
     _refreshTokenTimer?.cancel();
-  }
-
-  Future<dynamic> _handleMethodCall(MethodCall call) async {
-    switch (call.method) {
-      case 'handleAuthRedirect':
-        log.i('Received handleAuthRedirect MethodCall from native code');
-        // call.arguments is a Map
-        final Map<dynamic, dynamic> args =
-            call.arguments as Map<dynamic, dynamic>;
-
-        // extract the "url" key
-        final String urlString = args['url'] as String;
-
-        // parse it
-        final Uri uri = Uri.parse(urlString);
-        await _processAuthRedirect(uri);
-        break;
-      default:
-        throw MissingPluginException('No implementation for ${call.method}');
-    }
   }
 
   Future<void> _processAuthRedirect(Uri uri) async {
@@ -182,29 +163,32 @@ class AuthService {
       await _secureStorage.write(
         key: 'code_verifier',
         value: codeVerifier,
-      ); // Add this line
+      );
 
       final Uri authUri =
           Uri.parse('https://${_config.loginDomain}/oauth2/authorize').replace(
-            queryParameters: {
-              'client_id': _config.loginClientID,
-              'redirect_uri': _config.loginRedirectURI,
-              'response_type': 'code',
-              'scope': 'openid email offline_access',
-              'code_challenge': codeChallenge,
-              'code_challenge_method': 'S256',
-              'tenantId': _config.loginTenantID,
-              'idp_hint': _config.googleIdentityProviderID,
-            },
-          );
+        queryParameters: {
+          'client_id': _config.loginClientID,
+          'redirect_uri': _config.loginRedirectURI,
+          'response_type': 'code',
+          'scope': 'openid email offline_access',
+          'code_challenge': codeChallenge,
+          'code_challenge_method': 'S256',
+          'tenantId': _config.loginTenantID,
+          'idp_hint': _config.googleIdentityProviderID,
+        },
+      );
 
-      if (await canLaunchUrl(authUri)) {
-        await launchUrl(authUri, mode: LaunchMode.externalApplication);
-        return true;
-      } else {
+      // Delegate the platform-specific login flow to the plugin
+      final bool launched = await LibloginNative().login(
+        authUri: authUri,
+        redirectUri: _config.loginRedirectURI,
+      );
+
+      if (!launched) {
         log.w('Could not launch $authUri');
-        return false;
       }
+      return launched;
     } catch (e) {
       log.e('Failed to initiate Google login: $e');
       return false;
@@ -238,14 +222,12 @@ class AuthService {
     await _secureStorage.delete(key: _userIDKey);
     _currentAccessToken = null;
     _currentRefreshToken = null;
-    _currentUserID = null;
     _refreshTokenTimer?.cancel();
   }
 
   Future<void> _storeTokens(TokenResponse tokens) async {
     _currentAccessToken = tokens.accessToken;
     _currentRefreshToken = tokens.refreshToken;
-    _currentUserID = tokens.userID;
 
     await _secureStorage.write(key: _accessTokenKey, value: tokens.accessToken);
     await _secureStorage.write(
@@ -313,7 +295,7 @@ class AuthService {
   Future<bool> checkLoginStatus() async {
     _currentAccessToken = await _secureStorage.read(key: _accessTokenKey);
     _currentRefreshToken = await _secureStorage.read(key: _refreshTokenKey);
-    _currentUserID = await _secureStorage.read(key: _userIDKey);
+    await _secureStorage.read(key: _userIDKey);
 
     if (_currentAccessToken != null &&
         !_jwtDecoder.isExpired(_currentAccessToken!)) {
