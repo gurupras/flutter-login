@@ -113,6 +113,33 @@ The library provides a pre-built `LoginPage` that integrates with `AuthBloc`:
 LoginPage(title: 'My App Login')
 ```
 
+### 4. Accessing Token Data
+
+When the user is authenticated, you can access the decoded fields of the access token (such as user ID, roles, etc.).
+
+#### From AuthBloc
+
+The `AuthAuthenticated` state includes a `decodedAccessToken` property:
+
+```dart
+if (state is AuthAuthenticated) {
+  final userId = state.decodedAccessToken.sub;
+  final roles = state.decodedAccessToken.roles;
+  final email = state.decodedAccessToken.iss; // Depends on your provider configuration
+}
+```
+
+#### From AuthService
+
+You can also access the decoded token directly from the `AuthService`:
+
+```dart
+final decodedToken = authService.decodedAccessToken;
+if (decodedToken != null) {
+  print('Authenticated User ID: ${decodedToken.sub}');
+}
+```
+
 ## Troubleshooting
 
 - **Redirect not working**: Ensure the `loginRedirectURI` in your `LoginConfig` matches the `scheme` and `host` configured in `AndroidManifest.xml` and `Info.plist` exactly.

@@ -37,3 +37,67 @@ class TokenResponse {
     };
   }
 }
+
+class DecodedAccessToken {
+  final String? aud;
+  final int? exp;
+  final int? iat;
+  final String? iss;
+  final String sub;
+  final String? jti;
+  final String? authenticationType;
+  final String? applicationId;
+  final List<String>? roles;
+  final String? sid;
+  final int? authTime;
+  final String? tid;
+
+  DecodedAccessToken({
+    this.aud,
+    this.exp,
+    this.iat,
+    this.iss,
+    required this.sub,
+    this.jti,
+    this.authenticationType,
+    this.applicationId,
+    this.roles,
+    this.sid,
+    this.authTime,
+    this.tid,
+  });
+
+  factory DecodedAccessToken.fromJson(Map<String, dynamic> json) {
+    return DecodedAccessToken(
+      aud: json['aud'] as String?,
+      exp: json['exp'] as int?,
+      iat: json['iat'] as int?,
+      iss: json['iss'] as String?,
+      sub: json['sub'] as String,
+      jti: json['jti'] as String?,
+      authenticationType: json['authenticationType'] as String?,
+      applicationId: json['applicationId'] as String?,
+      roles: (json['roles'] as List<dynamic>?)?.map((e) => e as String).toList(),
+      sid: json['sid'] as String?,
+      authTime: json['auth_time'] as int?,
+      tid: json['tid'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'aud': aud,
+      'exp': exp,
+      'iat': iat,
+      'iss': iss,
+      'sub': sub,
+      'jti': jti,
+      'authenticationType': authenticationType,
+      'applicationId': applicationId,
+      'roles': roles,
+      'sid': sid,
+      'auth_time': authTime,
+      'tid': tid,
+    };
+  }
+}

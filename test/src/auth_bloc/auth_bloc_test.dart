@@ -5,6 +5,7 @@ import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:liblogin/src/auth_bloc/auth_bloc.dart';
 import 'package:liblogin/src/auth_service.dart';
+import 'package:liblogin/src/auth_models.dart';
 
 import 'auth_bloc_test.mocks.dart';
 
@@ -19,6 +20,8 @@ void main() {
           .thenAnswer((_) => const Stream.empty());
     });
 
+    final mockDecodedToken = DecodedAccessToken(sub: 'test_sub');
+
     blocTest<AuthBloc, AuthState>(
       'emits [AuthInitial] when nothing is added',
       build: () => AuthBloc(authService: mockAuthService),
@@ -32,12 +35,18 @@ void main() {
             .thenAnswer((_) async => true);
         when(mockAuthService.currentAccessToken)
             .thenReturn('mock_access_token');
+        when(mockAuthService.decodedAccessToken).thenReturn(mockDecodedToken);
         return AuthBloc(authService: mockAuthService);
       },
       act: (bloc) =>
           bloc.add(AuthLogin(username: 'test@example.com', password: 'password')),
-      expect: () =>
-          [AuthLoading(), AuthAuthenticated(accessToken: 'mock_access_token')],
+      expect: () => [
+        AuthLoading(),
+        AuthAuthenticated(
+          accessToken: 'mock_access_token',
+          decodedAccessToken: mockDecodedToken,
+        )
+      ],
       verify: (_) {
         verify(mockAuthService.login('test@example.com', 'password')).called(1);
       },
@@ -82,12 +91,18 @@ void main() {
             .thenAnswer((_) async => true);
         when(mockAuthService.currentAccessToken)
             .thenReturn('mock_access_token');
+        when(mockAuthService.decodedAccessToken).thenReturn(mockDecodedToken);
         return AuthBloc(authService: mockAuthService);
       },
       act: (bloc) => bloc
           .add(AuthSignUp(username: 'new@example.com', password: 'new_password')),
-      expect: () =>
-          [AuthLoading(), AuthAuthenticated(accessToken: 'mock_access_token')],
+      expect: () => [
+        AuthLoading(),
+        AuthAuthenticated(
+          accessToken: 'mock_access_token',
+          decodedAccessToken: mockDecodedToken,
+        )
+      ],
       verify: (_) {
         verify(mockAuthService.signUp('new@example.com', 'new_password'))
             .called(1);
@@ -160,11 +175,17 @@ void main() {
         when(mockAuthService.checkLoginStatus()).thenAnswer((_) async => true);
         when(mockAuthService.currentAccessToken)
             .thenReturn('mock_access_token');
+        when(mockAuthService.decodedAccessToken).thenReturn(mockDecodedToken);
         return AuthBloc(authService: mockAuthService);
       },
       act: (bloc) => bloc.add(AuthCheckStatus()),
-      expect: () =>
-          [AuthLoading(), AuthAuthenticated(accessToken: 'mock_access_token')],
+      expect: () => [
+        AuthLoading(),
+        AuthAuthenticated(
+          accessToken: 'mock_access_token',
+          decodedAccessToken: mockDecodedToken,
+        )
+      ],
       verify: (_) {
         verify(mockAuthService.checkLoginStatus()).called(1);
       },
@@ -193,12 +214,18 @@ void main() {
             .thenAnswer((_) async => true); // Mock for AuthCheckStatus
         when(mockAuthService.currentAccessToken)
             .thenReturn('mock_access_token');
+        when(mockAuthService.decodedAccessToken).thenReturn(mockDecodedToken);
         final bloc = AuthBloc(authService: mockAuthService);
         authRedirectController.add(true);
         return bloc;
       },
-      expect: () =>
-          [AuthLoading(), AuthAuthenticated(accessToken: 'mock_access_token')],
+      expect: () => [
+        AuthLoading(),
+        AuthAuthenticated(
+          accessToken: 'mock_access_token',
+          decodedAccessToken: mockDecodedToken,
+        )
+      ],
       verify: (_) {
         verify(mockAuthService.checkLoginStatus()).called(1);
       },

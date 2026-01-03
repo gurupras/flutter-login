@@ -53,6 +53,13 @@ class AuthService {
 
   String? get currentAccessToken => _currentAccessToken;
 
+  DecodedAccessToken? get decodedAccessToken {
+    if (_currentAccessToken == null) {
+      return null;
+    }
+    return DecodedAccessToken.fromJson(_jwtDecoder.decode(_currentAccessToken!));
+  }
+
   Timer? _refreshTokenTimer;
   bool _isRefreshing = false;
 

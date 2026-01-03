@@ -11,11 +11,15 @@ class AuthLoading extends AuthState {}
 
 class AuthAuthenticated extends AuthState {
   final String accessToken;
+  final DecodedAccessToken decodedAccessToken;
 
-  AuthAuthenticated({required this.accessToken});
+  AuthAuthenticated({
+    required this.accessToken,
+    required this.decodedAccessToken,
+  });
 
   @override
-  List<Object> get props => [accessToken];
+  List<Object> get props => [accessToken, decodedAccessToken];
 }
 
 class AuthUnauthenticated extends AuthState {}

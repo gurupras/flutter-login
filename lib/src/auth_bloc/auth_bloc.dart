@@ -1,5 +1,6 @@
 import 'package:bloc/bloc.dart';
 import 'package:liblogin/src/auth_service.dart';
+import 'package:liblogin/src/auth_models.dart';
 import 'package:equatable/equatable.dart'; // Added equatable import
 
 part 'auth_event.dart';
@@ -19,7 +20,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         emit(AuthLoading());
         final success = await authService.login(event.username, event.password);
         if (success && authService.currentAccessToken != null) {
-          emit(AuthAuthenticated(accessToken: authService.currentAccessToken!));
+          emit(AuthAuthenticated(
+            accessToken: authService.currentAccessToken!,
+            decodedAccessToken: authService.decodedAccessToken!,
+          ));
         } else {
           emit(AuthError(message: 'Login failed'));
         }
@@ -36,7 +40,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           event.password,
         );
         if (success && authService.currentAccessToken != null) {
-          emit(AuthAuthenticated(accessToken: authService.currentAccessToken!));
+          emit(AuthAuthenticated(
+            accessToken: authService.currentAccessToken!,
+            decodedAccessToken: authService.decodedAccessToken!,
+          ));
         } else {
           emit(AuthError(message: 'Sign up failed'));
         }
@@ -73,7 +80,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         emit(AuthLoading());
         final isAuthenticated = await authService.checkLoginStatus();
         if (isAuthenticated && authService.currentAccessToken != null) {
-          emit(AuthAuthenticated(accessToken: authService.currentAccessToken!));
+          emit(AuthAuthenticated(
+            accessToken: authService.currentAccessToken!,
+            decodedAccessToken: authService.decodedAccessToken!,
+          ));
         } else {
           emit(AuthUnauthenticated());
         }

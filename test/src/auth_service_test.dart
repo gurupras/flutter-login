@@ -444,6 +444,52 @@ void main() {
           verifyNever(mockJwtDecoder.isExpired(any));
           verifyNever(mockFusionAuthClient.refreshTokenGrant(any));
         });
+
+        test('decodedAccessToken returns decoded token when accessToken is set',
+            () async {
+          final tokenData = {
+            'aud': '2f65e5e0-aa9f-4ec2-9e84-a8032dc229d7',
+            'exp': 1768323069,
+            'iat': 1767459069,
+            'iss': 'planda.day',
+            'sub': 'ffbd1747-e5a9-4300-adc2-c35443be0bfe',
+            'jti': 'a8cffe4b-3d57-4d7b-b24c-eb8f7d9f17d9',
+            'authenticationType': 'GOOGLE',
+            'applicationId': '2f65e5e0-aa9f-4ec2-9e84-a8032dc229d7',
+            'roles': <String>[],
+            'sid': '54289f9c-9073-4283-a9b0-68021eae1ba3',
+            'auth_time': 1767459069,
+            'tid': '676c7011-741e-4145-bcb8-b8bd12ba1ee3'
+          };
+
+          when(
+            mockSecureStorage.read(key: 'accessToken'),
+          ).thenAnswer((_) async => 'mock_access_token');
+          when(
+            mockSecureStorage.read(key: 'refreshToken'),
+          ).thenAnswer((_) async => 'mock_refresh_token');
+          when(
+            mockSecureStorage.read(key: 'userID'),
+          ).thenAnswer((_) async => 'user123');
+          when(
+            mockJwtDecoder.isExpired('mock_access_token'),
+          ).thenReturn(false);
+          when(mockJwtDecoder.decode('mock_access_token')).thenReturn(tokenData);
+
+          await authService.checkLoginStatus();
+          async.elapse(Duration.zero);
+
+          final decoded = authService.decodedAccessToken;
+          expect(decoded, isNotNull);
+          expect(decoded!.sub, 'ffbd1747-e5a9-4300-adc2-c35443be0bfe');
+          expect(decoded.aud, '2f65e5e0-aa9f-4ec2-9e84-a8032dc229d7');
+          expect(decoded.authenticationType, 'GOOGLE');
+        });
+
+        test('decodedAccessToken returns null when accessToken is not set',
+            () async {
+          expect(authService.decodedAccessToken, isNull);
+        });
       });
 
       group('initiateGoogleLogin', () {
