@@ -26,7 +26,10 @@ void main() {
         loginRedirectURI: 'https://example.com/callback',
         googleIdentityProviderID: 'google-idp',
       );
-      fusionAuthClient = FusionAuthClient(config: config, httpClient: mockHttpClient);
+      fusionAuthClient = FusionAuthClient(
+        config: config,
+        httpClient: mockHttpClient,
+      );
     });
 
     test('login returns LoginResponse on success', () async {
@@ -37,11 +40,13 @@ void main() {
         'user': {'id': 'mock_user_id', 'email': 'test@example.com'},
       };
 
-      when(mockHttpClient.post(
-        Uri.parse('https://signup.example.com/login/login'),
-        headers: anyNamed('headers'),
-        body: anyNamed('body'),
-      )).thenAnswer((_) async => http.Response(json.encode(mockResponse), 200));
+      when(
+        mockHttpClient.post(
+          Uri.parse('https://signup.example.com/login/login'),
+          headers: anyNamed('headers'),
+          body: anyNamed('body'),
+        ),
+      ).thenAnswer((_) async => http.Response(json.encode(mockResponse), 200));
 
       final loginResponse = await fusionAuthClient.login(
         username: 'test@example.com',
@@ -54,24 +59,28 @@ void main() {
       expect(loginResponse.lastLoginCredentials, 'mock_last_login_credentials');
       expect(loginResponse.user!['id'], 'mock_user_id');
 
-      verify(mockHttpClient.post(
-        Uri.parse('https://signup.example.com/login/login'),
-        headers: {'content-type': 'application/json'},
-        body: json.encode({
-          'username': 'test@example.com',
-          'password': 'password123',
-          'clientID': 'some-client-id',
-          'device': {},
-        }),
-      )).called(1);
+      verify(
+        mockHttpClient.post(
+          Uri.parse('https://signup.example.com/login/login'),
+          headers: {'content-type': 'application/json'},
+          body: json.encode({
+            'username': 'test@example.com',
+            'password': 'password123',
+            'clientID': 'some-client-id',
+            'device': {},
+          }),
+        ),
+      ).called(1);
     });
 
     test('login throws error on failure', () async {
-      when(mockHttpClient.post(
-        any,
-        headers: anyNamed('headers'),
-        body: anyNamed('body'),
-      )).thenAnswer((_) async => http.Response('Error message', 400));
+      when(
+        mockHttpClient.post(
+          any,
+          headers: anyNamed('headers'),
+          body: anyNamed('body'),
+        ),
+      ).thenAnswer((_) async => http.Response('Error message', 400));
 
       expect(
         () => fusionAuthClient.login(
@@ -82,59 +91,74 @@ void main() {
       );
     });
 
-    test('resourceOwnerPasswordCredentialsGrant returns TokenResponse on success', () async {
-      final mockResponse = {
-        'access_token': 'mock_access_token',
-        'expires_in': 3600,
-        'token_type': 'Bearer',
-        'userId': 'mock_user_id',
-      };
+    test(
+      'resourceOwnerPasswordCredentialsGrant returns TokenResponse on success',
+      () async {
+        final mockResponse = {
+          'access_token': 'mock_access_token',
+          'expires_in': 3600,
+          'token_type': 'Bearer',
+          'userId': 'mock_user_id',
+        };
 
-      when(mockHttpClient.post(
-        Uri.parse('https://example.com/oauth2/token'),
-        headers: anyNamed('headers'),
-        body: anyNamed('body'),
-      )).thenAnswer((_) async => http.Response(json.encode(mockResponse), 200));
+        when(
+          mockHttpClient.post(
+            Uri.parse('https://example.com/oauth2/token'),
+            headers: anyNamed('headers'),
+            body: anyNamed('body'),
+          ),
+        ).thenAnswer(
+          (_) async => http.Response(json.encode(mockResponse), 200),
+        );
 
-      final tokenResponse = await fusionAuthClient.resourceOwnerPasswordCredentialsGrant(
-        'test@example.com',
-        'password123',
-      );
+        final tokenResponse = await fusionAuthClient
+            .resourceOwnerPasswordCredentialsGrant(
+              'test@example.com',
+              'password123',
+            );
 
-      expect(tokenResponse, isA<TokenResponse>());
-      expect(tokenResponse.accessToken, 'mock_access_token');
-      expect(tokenResponse.expiresIn, 3600);
-      expect(tokenResponse.tokenType, 'Bearer');
-      expect(tokenResponse.userID, 'mock_user_id');
+        expect(tokenResponse, isA<TokenResponse>());
+        expect(tokenResponse.accessToken, 'mock_access_token');
+        expect(tokenResponse.expiresIn, 3600);
+        expect(tokenResponse.tokenType, 'Bearer');
+        expect(tokenResponse.userID, 'mock_user_id');
 
-      verify(mockHttpClient.post(
-        Uri.parse('https://example.com/oauth2/token'),
-        headers: {'content-type': 'application/x-www-form-urlencoded'},
-        body: {
-          'client_id': 'some-client-id',
-          'grant_type': 'password',
-          'username': 'test@example.com',
-          'password': 'password123',
-          'scope': 'openid offline_access',
-        },
-      )).called(1);
-    });
+        verify(
+          mockHttpClient.post(
+            Uri.parse('https://example.com/oauth2/token'),
+            headers: {'content-type': 'application/x-www-form-urlencoded'},
+            body: {
+              'client_id': 'some-client-id',
+              'grant_type': 'password',
+              'username': 'test@example.com',
+              'password': 'password123',
+              'scope': 'openid email offline_access',
+            },
+          ),
+        ).called(1);
+      },
+    );
 
-    test('resourceOwnerPasswordCredentialsGrant throws error on failure', () async {
-      when(mockHttpClient.post(
-        any,
-        headers: anyNamed('headers'),
-        body: anyNamed('body'),
-      )).thenAnswer((_) async => http.Response('Error message', 400));
+    test(
+      'resourceOwnerPasswordCredentialsGrant throws error on failure',
+      () async {
+        when(
+          mockHttpClient.post(
+            any,
+            headers: anyNamed('headers'),
+            body: anyNamed('body'),
+          ),
+        ).thenAnswer((_) async => http.Response('Error message', 400));
 
-      expect(
-        () => fusionAuthClient.resourceOwnerPasswordCredentialsGrant(
-          'test@example.com',
-          'password123',
-        ),
-        throwsA(isA<String>()),
-      );
-    });
+        expect(
+          () => fusionAuthClient.resourceOwnerPasswordCredentialsGrant(
+            'test@example.com',
+            'password123',
+          ),
+          throwsA(isA<String>()),
+        );
+      },
+    );
 
     test('refreshTokenGrant returns TokenResponse on success', () async {
       final mockResponse = {
@@ -144,34 +168,42 @@ void main() {
         'userId': 'mock_user_id',
       };
 
-      when(mockHttpClient.post(
-        Uri.parse('https://signup.example.com/login/refresh-tokens'),
-        headers: anyNamed('headers'),
-        body: anyNamed('body'),
-      )).thenAnswer((_) async => http.Response(json.encode(mockResponse), 200));
+      when(
+        mockHttpClient.post(
+          Uri.parse('https://signup.example.com/login/refresh-tokens'),
+          headers: anyNamed('headers'),
+          body: anyNamed('body'),
+        ),
+      ).thenAnswer((_) async => http.Response(json.encode(mockResponse), 200));
 
-      final tokenResponse = await fusionAuthClient.refreshTokenGrant('mock_refresh_token');
+      final tokenResponse = await fusionAuthClient.refreshTokenGrant(
+        'mock_refresh_token',
+      );
 
       expect(tokenResponse, isA<TokenResponse>());
       expect(tokenResponse.accessToken, 'new_mock_access_token');
 
-      verify(mockHttpClient.post(
-        Uri.parse('https://signup.example.com/login/refresh-tokens'),
-        headers: {'content-type': 'application/json'},
-        body: json.encode({
-          'lastLoginCredentials': 'mock_refresh_token',
-          'clientID': 'some-client-id',
-          'includeRefreshToken': true,
-        }),
-      )).called(1);
+      verify(
+        mockHttpClient.post(
+          Uri.parse('https://signup.example.com/login/refresh-tokens'),
+          headers: {'content-type': 'application/json'},
+          body: json.encode({
+            'lastLoginCredentials': 'mock_refresh_token',
+            'clientID': 'some-client-id',
+            'includeRefreshToken': true,
+          }),
+        ),
+      ).called(1);
     });
 
     test('refreshTokenGrant throws error on failure', () async {
-      when(mockHttpClient.post(
-        any,
-        headers: anyNamed('headers'),
-        body: anyNamed('body'),
-      )).thenAnswer((_) async => http.Response('Error message', 400));
+      when(
+        mockHttpClient.post(
+          any,
+          headers: anyNamed('headers'),
+          body: anyNamed('body'),
+        ),
+      ).thenAnswer((_) async => http.Response('Error message', 400));
 
       expect(
         () => fusionAuthClient.refreshTokenGrant('mock_refresh_token'),
@@ -179,47 +211,58 @@ void main() {
       );
     });
 
-    test('exchangeAuthorizationCode returns TokenResponse on success', () async {
-      final mockResponse = {
-        'access_token': 'auth_code_access_token',
-        'expires_in': 3600,
-        'token_type': 'Bearer',
-        'userId': 'auth_code_user_id',
-      };
+    test(
+      'exchangeAuthorizationCode returns TokenResponse on success',
+      () async {
+        final mockResponse = {
+          'access_token': 'auth_code_access_token',
+          'expires_in': 3600,
+          'token_type': 'Bearer',
+          'userId': 'auth_code_user_id',
+        };
 
-      when(mockHttpClient.post(
-        Uri.parse('https://example.com/oauth2/token'),
-        headers: anyNamed('headers'),
-        body: anyNamed('body'),
-      )).thenAnswer((_) async => http.Response(json.encode(mockResponse), 200));
+        when(
+          mockHttpClient.post(
+            Uri.parse('https://example.com/oauth2/token'),
+            headers: anyNamed('headers'),
+            body: anyNamed('body'),
+          ),
+        ).thenAnswer(
+          (_) async => http.Response(json.encode(mockResponse), 200),
+        );
 
-      final tokenResponse = await fusionAuthClient.exchangeAuthorizationCode(
-        'mock_code',
-        'mock_code_verifier',
-      );
+        final tokenResponse = await fusionAuthClient.exchangeAuthorizationCode(
+          'mock_code',
+          'mock_code_verifier',
+        );
 
-      expect(tokenResponse, isA<TokenResponse>());
-      expect(tokenResponse.accessToken, 'auth_code_access_token');
+        expect(tokenResponse, isA<TokenResponse>());
+        expect(tokenResponse.accessToken, 'auth_code_access_token');
 
-      verify(mockHttpClient.post(
-        Uri.parse('https://example.com/oauth2/token'),
-        headers: {'content-type': 'application/x-www-form-urlencoded'},
-        body: {
-          'client_id': 'some-client-id',
-          'grant_type': 'authorization_code',
-          'code': 'mock_code',
-          'redirect_uri': 'https://example.com/callback',
-          'code_verifier': 'mock_code_verifier',
-        },
-      )).called(1);
-    });
+        verify(
+          mockHttpClient.post(
+            Uri.parse('https://example.com/oauth2/token'),
+            headers: {'content-type': 'application/x-www-form-urlencoded'},
+            body: {
+              'client_id': 'some-client-id',
+              'grant_type': 'authorization_code',
+              'code': 'mock_code',
+              'redirect_uri': 'https://example.com/callback',
+              'code_verifier': 'mock_code_verifier',
+            },
+          ),
+        ).called(1);
+      },
+    );
 
     test('exchangeAuthorizationCode throws error on failure', () async {
-      when(mockHttpClient.post(
-        any,
-        headers: anyNamed('headers'),
-        body: anyNamed('body'),
-      )).thenAnswer((_) async => http.Response('Error message', 400));
+      when(
+        mockHttpClient.post(
+          any,
+          headers: anyNamed('headers'),
+          body: anyNamed('body'),
+        ),
+      ).thenAnswer((_) async => http.Response('Error message', 400));
 
       expect(
         () => fusionAuthClient.exchangeAuthorizationCode(

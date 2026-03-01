@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_login/flutter_login.dart';
@@ -14,28 +15,80 @@ class LoginPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) {
-        // Parent listens for auth success/failure
+        if (state is AuthError) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+          );
+        }
       },
       child: FlutterLogin(
         title: title,
         onLogin: (loginData) async {
-          context.read<AuthBloc>().add(
+          final bloc = context.read<AuthBloc>();
+          final completer = Completer<String?>();
+
+          late StreamSubscription subscription;
+          subscription = bloc.stream.listen((state) {
+            if (state is AuthAuthenticated) {
+              completer.complete(null);
+              subscription.cancel();
+            } else if (state is AuthError) {
+              completer.complete(state.message);
+              subscription.cancel();
+            }
+          });
+
+          bloc.add(
             AuthLogin(username: loginData.name, password: loginData.password),
           );
-          return null;
+
+          return completer.future;
         },
         onSignup: (signupData) async {
-          context.read<AuthBloc>().add(
+          final bloc = context.read<AuthBloc>();
+          final completer = Completer<String?>();
+
+          late StreamSubscription subscription;
+          subscription = bloc.stream.listen((state) {
+            if (state is AuthAuthenticated) {
+              completer.complete(null);
+              subscription.cancel();
+            } else if (state is AuthError) {
+              completer.complete(state.message);
+              subscription.cancel();
+            }
+          });
+
+          bloc.add(
             AuthSignUp(
               username: signupData.name!,
               password: signupData.password!,
             ),
           );
-          return null;
+
+          return completer.future;
         },
         onRecoverPassword: (email) async {
-          context.read<AuthBloc>().add(AuthRecoverPassword(email: email));
-          return null;
+          final bloc = context.read<AuthBloc>();
+          final completer = Completer<String?>();
+
+          late StreamSubscription subscription;
+          subscription = bloc.stream.listen((state) {
+            if (state is AuthRecoverPasswordSuccess) {
+              completer.complete(null);
+              subscription.cancel();
+            } else if (state is AuthError) {
+              completer.complete(state.message);
+              subscription.cancel();
+            }
+          });
+
+          bloc.add(AuthRecoverPassword(email: email));
+
+          return completer.future;
         },
         loginProviders: [
           LoginProvider(

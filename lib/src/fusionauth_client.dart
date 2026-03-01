@@ -25,7 +25,8 @@ class FusionAuthClient {
     if (lastLoginCredentials == null) {
       return null;
     }
-    if (lastLoginCredentials is Map && lastLoginCredentials.containsKey('data')) {
+    if (lastLoginCredentials is Map &&
+        lastLoginCredentials.containsKey('data')) {
       return lastLoginCredentials['data'] as String?;
     }
     if (lastLoginCredentials is String) {
@@ -77,7 +78,7 @@ class FusionAuthClient {
         'grant_type': 'password',
         'username': username,
         'password': password,
-        'scope': 'openid offline_access',
+        'scope': 'openid email offline_access',
       },
     );
 

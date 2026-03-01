@@ -247,8 +247,13 @@ Stderr: ${result.stderr}''',
       const String password = 'Password123!';
 
       print('Testing signUp with $email...');
-      // signUp will return false because it internally calls login which fails due to verification
-      await authService.signUp(email, password);
+      // signUp will throw because it internally calls login which fails due to verification
+      try {
+        await authService.signUp(email, password);
+        fail('signUp should have thrown verification error');
+      } catch (e) {
+        expect(e.toString(), contains('verify your email'));
+      }
 
       print('Verifying email $email...');
       final verifyResp = await http.get(
@@ -277,11 +282,10 @@ Stderr: ${result.stderr}''',
     });
 
     test('Login with incorrect credentials fails', () async {
-      final loginSuccess = await authService.login(
-        'nonexistent@example.com',
-        'wrongpassword',
+      expect(
+        () => authService.login('nonexistent@example.com', 'wrongpassword'),
+        throwsA(contains('Invalid email or password')),
       );
-      expect(loginSuccess, isFalse);
     });
 
     test('Session Restoration (App Restart Simulation)', () async {
@@ -321,17 +325,14 @@ Stderr: ${result.stderr}''',
     test('Duplicate Sign-up Handling', () async {
       print('Testing duplicate sign-up...');
       // Sign up the first time (ignore if it already exists from a previous run)
-      await authService.signUp(testUser1Email, testUser1Password);
+      try {
+        await authService.signUp(testUser1Email, testUser1Password);
+      } catch (_) {}
 
       // Attempt to sign up with the same email again
-      final signUpSuccess = await authService.signUp(
-        testUser1Email,
-        testUser1Password,
-      );
       expect(
-        signUpSuccess,
-        isFalse,
-        reason: 'Sign up should fail for existing email',
+        () => authService.signUp(testUser1Email, testUser1Password),
+        throwsA(contains('already exists')),
       );
     });
 

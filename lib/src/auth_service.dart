@@ -60,7 +60,9 @@ class AuthService {
     if (_currentAccessToken == null) {
       return null;
     }
-    return DecodedAccessToken.fromJson(_jwtDecoder.decode(_currentAccessToken!));
+    return DecodedAccessToken.fromJson(
+      _jwtDecoder.decode(_currentAccessToken!),
+    );
   }
 
   Timer? _refreshTokenTimer;
@@ -75,16 +77,17 @@ class AuthService {
     JwtDecoderWrapper? jwtDecoder,
     FusionAuthClient? fusionAuthClient, // Add this for injection
     LibloginNative? libloginNative,
-  })  : _config = config,
-        _secureStorage = secureStorage ?? const FlutterSecureStorage(),
-        _httpClient = httpClient ?? http.Client(),
-        _jwtDecoder = jwtDecoder ?? JwtDecoderWrapper(),
-        _fusionAuthClient = fusionAuthClient ??
-            FusionAuthClient(
-              config: config,
-              httpClient: httpClient ?? http.Client(),
-            ),
-        _libloginNative = libloginNative ?? LibloginNative() {
+  }) : _config = config,
+       _secureStorage = secureStorage ?? const FlutterSecureStorage(),
+       _httpClient = httpClient ?? http.Client(),
+       _jwtDecoder = jwtDecoder ?? JwtDecoderWrapper(),
+       _fusionAuthClient =
+           fusionAuthClient ??
+           FusionAuthClient(
+             config: config,
+             httpClient: httpClient ?? http.Client(),
+           ),
+       _libloginNative = libloginNative ?? LibloginNative() {
     _libloginNative.setAuthRedirectHandler((url) => _handleAuthRedirect(url));
   }
 
@@ -100,11 +103,14 @@ class AuthService {
       _currentDeviceID = nanoid();
       await _secureStorage.write(key: _deviceIDKey, value: _currentDeviceID);
     }
-    _currentLastLoginCredentials =
-        await _secureStorage.read(key: _lastLoginCredentialsKey);
+    _currentLastLoginCredentials = await _secureStorage.read(
+      key: _lastLoginCredentialsKey,
+    );
     if (_currentLastLoginCredentials != null) {
       try {
-        _currentLastLoginCredentials = json.decode(_currentLastLoginCredentials);
+        _currentLastLoginCredentials = json.decode(
+          _currentLastLoginCredentials,
+        );
       } catch (e) {
         // Not JSON, keep as string
       }
@@ -145,7 +151,7 @@ class AuthService {
       final response = await _fusionAuthClient.login(
         username: username,
         password: password,
-        scope: 'openid offline_access',
+        scope: 'openid email offline_access',
         lastLoginCredentials: _currentLastLoginCredentials,
       );
       await _storeLoginResponse(response);
@@ -153,7 +159,19 @@ class AuthService {
       return true;
     } catch (e, stackTrace) {
       log.e('Login failed', error: e, stackTrace: stackTrace);
-      return false;
+      String? message;
+      try {
+        final body = json.decode(e.toString());
+        if (body is Map && body.containsKey('message')) {
+          message = body['message'];
+        }
+      } catch (_) {
+        // Fallback to raw error string if not JSON or doesn't have message
+      }
+      if (message != null) {
+        throw message;
+      }
+      rethrow;
     }
   }
 
@@ -167,17 +185,40 @@ class AuthService {
 
       if (response.statusCode == 200) {
         // After successful signup, attempt to log in to get tokens
-        final bool loginSuccess = await login(username, password);
-        if (!loginSuccess) {}
-        return loginSuccess;
+        try {
+          final bool loginSuccess = await login(username, password);
+          return loginSuccess;
+        } catch (loginError) {
+          String? message;
+          try {
+            final body = json.decode(response.body);
+            if (body is Map && body.containsKey('message')) {
+              message = body['message'];
+            }
+          } catch (e) {
+            // Ignore decoding errors
+          }
+          if (message != null) {
+            throw message;
+          }
+          rethrow;
+        }
       } else {
         log.e('Sign up failed: ${response.body}');
-
+        try {
+          final body = json.decode(response.body);
+          if (body is Map && body.containsKey('message')) {
+            throw body['message'];
+          }
+        } catch (_) {
+          // If registration body doesn't have a message, throw the raw body
+          throw response.body;
+        }
         return false;
       }
     } catch (e, stackTrace) {
       log.e('Sign up failed', error: e, stackTrace: stackTrace);
-      return false;
+      rethrow;
     }
   }
 
@@ -187,10 +228,7 @@ class AuthService {
     try {
       codeVerifier = AuthService.generateCodeVerifier();
       final codeChallenge = AuthService.generateCodeChallenge(codeVerifier!);
-      await _secureStorage.write(
-        key: 'code_verifier',
-        value: codeVerifier,
-      );
+      await _secureStorage.write(key: 'code_verifier', value: codeVerifier);
 
       final String origin = _config.loginDomain.contains('://')
           ? _config.loginDomain
@@ -290,10 +328,7 @@ class AuthService {
       final value = response.lastLoginCredentials is String
           ? response.lastLoginCredentials
           : json.encode(response.lastLoginCredentials);
-      await _secureStorage.write(
-        key: _lastLoginCredentialsKey,
-        value: value,
-      );
+      await _secureStorage.write(key: _lastLoginCredentialsKey, value: value);
     }
 
     // Extract userID from decoded token or user object
