@@ -1,10 +1,12 @@
+import 'dart:convert';
+
 class TokenResponse {
   final String accessToken;
   final int expiresIn;
   final String? idToken;
   final String? refreshToken;
   final String tokenType;
-  final String userID;
+  final String? userID;
 
   TokenResponse({
     required this.accessToken,
@@ -12,17 +14,17 @@ class TokenResponse {
     this.idToken,
     this.refreshToken,
     required this.tokenType,
-    required this.userID,
+    this.userID,
   });
 
   factory TokenResponse.fromJson(Map<String, dynamic> json) {
     return TokenResponse(
       accessToken: json['access_token'] as String,
-      expiresIn: json['expires_in'] as int,
+      expiresIn: (json['expires_in'] as int?) ?? 0,
       idToken: json['id_token'] as String?,
       refreshToken: json['refresh_token'] as String?,
-      tokenType: json['token_type'] as String,
-      userID: json['userId'] as String,
+      tokenType: (json['token_type'] as String?) ?? 'Bearer',
+      userID: json['userId'] as String?,
     );
   }
 
@@ -98,6 +100,38 @@ class DecodedAccessToken {
       'sid': sid,
       'auth_time': authTime,
       'tid': tid,
+    };
+  }
+}
+
+class LoginResponse {
+  final String accessToken;
+  final String? refreshToken;
+  final dynamic lastLoginCredentials;
+  final Map<String, dynamic>? user;
+
+  LoginResponse({
+    required this.accessToken,
+    this.refreshToken,
+    this.lastLoginCredentials,
+    this.user,
+  });
+
+  factory LoginResponse.fromJson(Map<String, dynamic> json) {
+    return LoginResponse(
+      accessToken: json['access_token'] as String,
+      refreshToken: json['refresh_token'] as String?,
+      lastLoginCredentials: json['lastLoginCredentials'],
+      user: json['user'] as Map<String, dynamic>?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'access_token': accessToken,
+      'refresh_token': refreshToken,
+      'lastLoginCredentials': lastLoginCredentials,
+      'user': user,
     };
   }
 }

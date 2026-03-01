@@ -14,6 +14,7 @@ import 'package:http/http.dart' as _i3;
 import 'package:liblogin/src/auth_models.dart' as _i4;
 import 'package:liblogin/src/auth_service.dart' as _i11;
 import 'package:liblogin/src/fusionauth_client.dart' as _i12;
+import 'package:liblogin_native/liblogin_native.dart' as _i13;
 import 'package:mockito/mockito.dart' as _i1;
 import 'package:mockito/src/dummies.dart' as _i9;
 
@@ -75,19 +76,24 @@ class _FakeStreamedResponse_7 extends _i1.SmartFake
     : super(parent, parentInvocation);
 }
 
-class _FakeTokenResponse_8 extends _i1.SmartFake implements _i4.TokenResponse {
-  _FakeTokenResponse_8(Object parent, Invocation parentInvocation)
+class _FakeLoginResponse_8 extends _i1.SmartFake implements _i4.LoginResponse {
+  _FakeLoginResponse_8(Object parent, Invocation parentInvocation)
     : super(parent, parentInvocation);
 }
 
-class _FakeMethodCodec_9 extends _i1.SmartFake implements _i5.MethodCodec {
-  _FakeMethodCodec_9(Object parent, Invocation parentInvocation)
+class _FakeTokenResponse_9 extends _i1.SmartFake implements _i4.TokenResponse {
+  _FakeTokenResponse_9(Object parent, Invocation parentInvocation)
     : super(parent, parentInvocation);
 }
 
-class _FakeBinaryMessenger_10 extends _i1.SmartFake
+class _FakeMethodCodec_10 extends _i1.SmartFake implements _i5.MethodCodec {
+  _FakeMethodCodec_10(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakeBinaryMessenger_11 extends _i1.SmartFake
     implements _i5.BinaryMessenger {
-  _FakeBinaryMessenger_10(Object parent, Invocation parentInvocation)
+  _FakeBinaryMessenger_11(Object parent, Invocation parentInvocation)
     : super(parent, parentInvocation);
 }
 
@@ -580,6 +586,17 @@ class MockFusionAuthClient extends _i1.Mock implements _i12.FusionAuthClient {
           as String);
 
   @override
+  String get signupOrigin =>
+      (super.noSuchMethod(
+            Invocation.getter(#signupOrigin),
+            returnValue: _i9.dummyValue<String>(
+              this,
+              Invocation.getter(#signupOrigin),
+            ),
+          )
+          as String);
+
+  @override
   String get clientID =>
       (super.noSuchMethod(
             Invocation.getter(#clientID),
@@ -613,6 +630,37 @@ class MockFusionAuthClient extends _i1.Mock implements _i12.FusionAuthClient {
           as String);
 
   @override
+  _i7.Future<_i4.LoginResponse> login({
+    required String? username,
+    required String? password,
+    String? scope,
+    Map<String, dynamic>? device = const {},
+    dynamic lastLoginCredentials,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(#login, [], {
+              #username: username,
+              #password: password,
+              #scope: scope,
+              #device: device,
+              #lastLoginCredentials: lastLoginCredentials,
+            }),
+            returnValue: _i7.Future<_i4.LoginResponse>.value(
+              _FakeLoginResponse_8(
+                this,
+                Invocation.method(#login, [], {
+                  #username: username,
+                  #password: password,
+                  #scope: scope,
+                  #device: device,
+                  #lastLoginCredentials: lastLoginCredentials,
+                }),
+              ),
+            ),
+          )
+          as _i7.Future<_i4.LoginResponse>);
+
+  @override
   _i7.Future<_i4.TokenResponse> resourceOwnerPasswordCredentialsGrant(
     String? username,
     String? password,
@@ -623,7 +671,7 @@ class MockFusionAuthClient extends _i1.Mock implements _i12.FusionAuthClient {
               password,
             ]),
             returnValue: _i7.Future<_i4.TokenResponse>.value(
-              _FakeTokenResponse_8(
+              _FakeTokenResponse_9(
                 this,
                 Invocation.method(#resourceOwnerPasswordCredentialsGrant, [
                   username,
@@ -635,13 +683,15 @@ class MockFusionAuthClient extends _i1.Mock implements _i12.FusionAuthClient {
           as _i7.Future<_i4.TokenResponse>);
 
   @override
-  _i7.Future<_i4.TokenResponse> refreshTokenGrant(String? refreshToken) =>
+  _i7.Future<_i4.TokenResponse> refreshTokenGrant(
+    dynamic lastLoginCredentials,
+  ) =>
       (super.noSuchMethod(
-            Invocation.method(#refreshTokenGrant, [refreshToken]),
+            Invocation.method(#refreshTokenGrant, [lastLoginCredentials]),
             returnValue: _i7.Future<_i4.TokenResponse>.value(
-              _FakeTokenResponse_8(
+              _FakeTokenResponse_9(
                 this,
-                Invocation.method(#refreshTokenGrant, [refreshToken]),
+                Invocation.method(#refreshTokenGrant, [lastLoginCredentials]),
               ),
             ),
           )
@@ -655,7 +705,7 @@ class MockFusionAuthClient extends _i1.Mock implements _i12.FusionAuthClient {
       (super.noSuchMethod(
             Invocation.method(#exchangeAuthorizationCode, [code, codeVerifier]),
             returnValue: _i7.Future<_i4.TokenResponse>.value(
-              _FakeTokenResponse_8(
+              _FakeTokenResponse_9(
                 this,
                 Invocation.method(#exchangeAuthorizationCode, [
                   code,
@@ -687,7 +737,7 @@ class MockMethodChannel extends _i1.Mock implements _i5.MethodChannel {
   _i5.MethodCodec get codec =>
       (super.noSuchMethod(
             Invocation.getter(#codec),
-            returnValue: _FakeMethodCodec_9(this, Invocation.getter(#codec)),
+            returnValue: _FakeMethodCodec_10(this, Invocation.getter(#codec)),
           )
           as _i5.MethodCodec);
 
@@ -695,7 +745,7 @@ class MockMethodChannel extends _i1.Mock implements _i5.MethodChannel {
   _i5.BinaryMessenger get binaryMessenger =>
       (super.noSuchMethod(
             Invocation.getter(#binaryMessenger),
-            returnValue: _FakeBinaryMessenger_10(
+            returnValue: _FakeBinaryMessenger_11(
               this,
               Invocation.getter(#binaryMessenger),
             ),
@@ -739,4 +789,61 @@ class MockMethodChannel extends _i1.Mock implements _i5.MethodChannel {
     Invocation.method(#setMethodCallHandler, [handler]),
     returnValueForMissingStub: null,
   );
+}
+
+/// A class which mocks [LibloginNative].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockLibloginNative extends _i1.Mock implements _i13.LibloginNative {
+  MockLibloginNative() {
+    _i1.throwOnMissingStub(this);
+  }
+
+  @override
+  _i7.Future<String?> getPlatformVersion() =>
+      (super.noSuchMethod(
+            Invocation.method(#getPlatformVersion, []),
+            returnValue: _i7.Future<String?>.value(),
+          )
+          as _i7.Future<String?>);
+
+  @override
+  _i7.Future<String?> getPlatformInfo() =>
+      (super.noSuchMethod(
+            Invocation.method(#getPlatformInfo, []),
+            returnValue: _i7.Future<String?>.value(),
+          )
+          as _i7.Future<String?>);
+
+  @override
+  _i7.Future<void> setAuthRedirectHandler(dynamic Function(String)? handler) =>
+      (super.noSuchMethod(
+            Invocation.method(#setAuthRedirectHandler, [handler]),
+            returnValue: _i7.Future<void>.value(),
+            returnValueForMissingStub: _i7.Future<void>.value(),
+          )
+          as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> dispatchAuthRedirect(String? url) =>
+      (super.noSuchMethod(
+            Invocation.method(#dispatchAuthRedirect, [url]),
+            returnValue: _i7.Future<void>.value(),
+            returnValueForMissingStub: _i7.Future<void>.value(),
+          )
+          as _i7.Future<void>);
+
+  @override
+  _i7.Future<bool> login({
+    required Uri? authUri,
+    required String? redirectUri,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(#login, [], {
+              #authUri: authUri,
+              #redirectUri: redirectUri,
+            }),
+            returnValue: _i7.Future<bool>.value(false),
+          )
+          as _i7.Future<bool>);
 }

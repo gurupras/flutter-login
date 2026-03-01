@@ -1,0 +1,101 @@
+services:
+  app:
+    image: node:24-bookworm
+    volumes:
+      - .:/app
+      - ./kickstart.json:/app/kickstart.json
+    working_dir: /app
+    command: node index.js
+    environment:
+      PORT: 3117
+      FUSIONAUTH_HOST: http://liblogin-login-backend-test-fusionauth:9011
+      ENCRYPTION_PASSPHRASE: abcdefghabcdefghabcdefgh
+      FORGOT_PASSWORD_RATE_LIMIT_MAX: 100
+    ports:
+      - "3117:3117"
+    depends_on:
+      liblogin-login-backend-test-fusionauth:
+        condition: service_healthy
+    networks:
+      - liblogin-login-backend-test-db_net
+
+  liblogin-login-backend-fake-oidc-provider:
+    image: node:24-bookworm
+    working_dir: /app
+    volumes:
+      - './:/app'
+    command: >
+      node ./node_modules/@gurupras/login-backend/dist/example/fake-oidc-provider.js
+    environment:
+      PORT: 9999 # I think this is important to be 9999 for kickstart.json to be able to pick things up properly. Ensure this matches the IDP entry in kickstart.json
+    healthcheck:
+      interval: 10s
+      retries: 80
+      test: curl --write-out 'HTTP %{http_code}' --fail --silent --output /dev/null http://localhost:9999/health
+    networks:
+      - liblogin-login-backend-test-fake-oidc-provider_net
+    restart: unless-stopped
+
+  liblogin-login-backend-test-db:
+    image: postgres:16.0-bookworm
+    environment:
+      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_USER: fusionauth
+      POSTGRES_PASSWORD: fusionauth
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U fusionauth" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - liblogin-login-backend-test-db_net
+    restart: unless-stopped
+    volumes:
+      - liblogin-login-backend-test-db_data:/var/lib/postgresql/data
+
+  liblogin-login-backend-test-fusionauth:
+    image: fusionauth/fusionauth-app:latest
+    depends_on:
+      liblogin-login-backend-test-db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: jdbc:postgresql://liblogin-login-backend-test-db:5432/fusionauth
+      DATABASE_ROOT_USERNAME: fusionauth
+      DATABASE_ROOT_PASSWORD: fusionauth
+      DATABASE_USERNAME: fusionauth
+      DATABASE_PASSWORD: fusionauth
+
+      FUSIONAUTH_APP_MEMORY: 512M
+      FUSIONAUTH_APP_RUNTIME_MODE: development
+      FUSIONAUTH_APP_URL: http://liblogin-login-backend-test-fusionauth:9011
+
+      SEARCH_TYPE: database
+      FUSIONAUTH_APP_KICKSTART_FILE: /usr/local/fusionauth/kickstart/kickstart.json
+      IDP_HOSTNAME: "liblogin-login-backend-fake-oidc-provider" # Should match container name of fake-oidc-provider
+    healthcheck:
+      test: curl --silent --fail http://localhost:9011/api/status -o /dev/null -w "%{http_code}"
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - liblogin-login-backend-test-db_net
+      - liblogin-login-backend-test-fake-oidc-provider_net
+    restart: unless-stopped
+    ports:
+      - "9011:9011"
+    volumes:
+      - liblogin-login-backend-test-fa_config:/usr/local/fusionauth/config
+      - ./:/usr/local/fusionauth/kickstart/
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  liblogin-login-backend-test-db_net:
+    driver: bridge
+  liblogin-login-backend-test-fake-oidc-provider_net:
+    driver: bridge
+
+volumes:
+  liblogin-login-backend-test-db_data:
+  liblogin-login-backend-test-fa_config:
+

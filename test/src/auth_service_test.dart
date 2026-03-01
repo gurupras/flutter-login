@@ -9,6 +9,7 @@ import 'package:liblogin/src/auth_service.dart';
 import 'package:liblogin/src/fusionauth_client.dart';
 import 'package:liblogin/src/login_config.dart';
 import 'package:liblogin/src/auth_models.dart';
+import 'package:liblogin_native/liblogin_native.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:fake_async/fake_async.dart';
 
@@ -26,6 +27,7 @@ class MockUrlLauncher {
   JwtDecoderWrapper,
   FusionAuthClient,
   MethodChannel,
+  LibloginNative,
 ])
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -35,6 +37,7 @@ void main() {
       late MockClient mockHttpClient;
       late MockJwtDecoderWrapper mockJwtDecoder;
       late MockFusionAuthClient mockFusionAuthClient;
+      late MockLibloginNative mockLibloginNative;
       late LoginConfig config;
       late AuthService authService;
 
@@ -43,6 +46,7 @@ void main() {
         mockHttpClient = MockClient();
         mockJwtDecoder = MockJwtDecoderWrapper();
         mockFusionAuthClient = MockFusionAuthClient();
+        mockLibloginNative = MockLibloginNative();
 
         config = LoginConfig(
           loginDomain: 'example.com',
@@ -64,6 +68,9 @@ void main() {
         when(
           mockJwtDecoder.isExpired(any),
         ).thenReturn(false); // Not expired by default
+
+        // Mock LibloginNative
+        when(mockLibloginNative.setAuthRedirectHandler(any)).thenAnswer((_) async => {});
 
         // Mock the MethodChannel constructor for liblogin
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -99,6 +106,7 @@ void main() {
           httpClient: mockHttpClient,
           jwtDecoder: mockJwtDecoder,
           fusionAuthClient: mockFusionAuthClient,
+          libloginNative: mockLibloginNative,
         );
       });
 
@@ -120,6 +128,9 @@ void main() {
           mockSecureStorage.read(key: 'deviceID'),
         ).thenAnswer((_) async => null);
         when(
+          mockSecureStorage.read(key: 'lastLoginCredentials'),
+        ).thenAnswer((_) async => null);
+        when(
           mockSecureStorage.write(key: 'deviceID', value: anyNamed('value')),
         ).thenAnswer((_) async => {});
 
@@ -127,6 +138,7 @@ void main() {
         async.elapse(Duration.zero); // Add this line
 
         verify(mockSecureStorage.read(key: 'deviceID')).called(1);
+        verify(mockSecureStorage.read(key: 'lastLoginCredentials')).called(1);
         verify(
           mockSecureStorage.write(key: 'deviceID', value: anyNamed('value')),
         ).called(1);
@@ -136,32 +148,42 @@ void main() {
         when(
           mockSecureStorage.read(key: 'deviceID'),
         ).thenAnswer((_) async => 'existing_device_id');
+        when(
+          mockSecureStorage.read(key: 'lastLoginCredentials'),
+        ).thenAnswer((_) async => null);
 
         await authService.init();
         async.elapse(Duration.zero); // Add this line
 
         verify(mockSecureStorage.read(key: 'deviceID')).called(1);
+        verify(mockSecureStorage.read(key: 'lastLoginCredentials')).called(1);
         verifyNever(
           mockSecureStorage.write(key: 'deviceID', value: anyNamed('value')),
         );
       });
 
       test(
-        'login calls FusionAuthClient and stores tokens on success',
+        'login calls FusionAuthClient.login and stores tokens on success',
         () async {
-          final tokenResponse = TokenResponse(
+          final loginResponse = LoginResponse(
             accessToken: 'access',
-            expiresIn: 3600,
-            tokenType: 'Bearer',
-            userID: 'user123',
             refreshToken: 'refresh',
+            lastLoginCredentials: 'last',
+            user: {'id': 'user123'},
           );
           when(
-            mockFusionAuthClient.resourceOwnerPasswordCredentialsGrant(
-              any,
-              any,
+            mockFusionAuthClient.login(
+              username: anyNamed('username'),
+              password: anyNamed('password'),
+              scope: anyNamed('scope'),
+              lastLoginCredentials: anyNamed('lastLoginCredentials'),
+              device: anyNamed('device'),
             ),
-          ).thenAnswer((_) async => tokenResponse);
+          ).thenAnswer((_) async => loginResponse);
+          when(mockJwtDecoder.decode('access')).thenReturn({
+            'sub': 'user123',
+            'exp': (DateTime.now().millisecondsSinceEpoch ~/ 1000) + 3600,
+          });
           when(
             mockSecureStorage.write(
               key: anyNamed('key'),
@@ -176,9 +198,11 @@ void main() {
 
           expect(result, isTrue);
           verify(
-            mockFusionAuthClient.resourceOwnerPasswordCredentialsGrant(
-              'user',
-              'pass',
+            mockFusionAuthClient.login(
+              username: 'user',
+              password: 'pass',
+              scope: 'openid offline_access',
+              lastLoginCredentials: null,
             ),
           ).called(1);
           verify(
@@ -188,14 +212,23 @@ void main() {
             mockSecureStorage.write(key: 'refreshToken', value: 'refresh'),
           ).called(1);
           verify(
+            mockSecureStorage.write(key: 'lastLoginCredentials', value: 'last'),
+          ).called(1);
+          verify(
             mockSecureStorage.write(key: 'userID', value: 'user123'),
           ).called(1);
         },
       );
 
-      test('login returns false on FusionAuthClient error', () async {
+      test('login returns false on FusionAuthClient.login error', () async {
         when(
-          mockFusionAuthClient.resourceOwnerPasswordCredentialsGrant(any, any),
+          mockFusionAuthClient.login(
+            username: anyNamed('username'),
+            password: anyNamed('password'),
+            scope: anyNamed('scope'),
+            lastLoginCredentials: anyNamed('lastLoginCredentials'),
+            device: anyNamed('device'),
+          ),
         ).thenThrow('Login failed');
 
         final result = await authService.login('user', 'pass');
@@ -203,9 +236,11 @@ void main() {
 
         expect(result, isFalse);
         verify(
-          mockFusionAuthClient.resourceOwnerPasswordCredentialsGrant(
-            'user',
-            'pass',
+          mockFusionAuthClient.login(
+            username: 'user',
+            password: 'pass',
+            scope: 'openid offline_access',
+            lastLoginCredentials: null,
           ),
         ).called(1);
         verifyNever(
@@ -224,16 +259,25 @@ void main() {
             body: anyNamed('body'),
           ),
         ).thenAnswer((_) async => http.Response('', 200));
-        final tokenResponse = TokenResponse(
+        final loginResponse = LoginResponse(
           accessToken: 'access',
-          expiresIn: 3600,
-          tokenType: 'Bearer',
-          userID: 'user123',
           refreshToken: 'refresh',
+          lastLoginCredentials: 'last',
+          user: {'id': 'user123'},
         );
         when(
-          mockFusionAuthClient.resourceOwnerPasswordCredentialsGrant(any, any),
-        ).thenAnswer((_) async => tokenResponse);
+          mockFusionAuthClient.login(
+            username: anyNamed('username'),
+            password: anyNamed('password'),
+            scope: anyNamed('scope'),
+            lastLoginCredentials: anyNamed('lastLoginCredentials'),
+            device: anyNamed('device'),
+          ),
+        ).thenAnswer((_) async => loginResponse);
+        when(mockJwtDecoder.decode('access')).thenReturn({
+          'sub': 'user123',
+          'exp': (DateTime.now().millisecondsSinceEpoch ~/ 1000) + 3600,
+        });
         when(
           mockSecureStorage.write(
             key: anyNamed('key'),
@@ -249,15 +293,17 @@ void main() {
         expect(result, isTrue);
         verify(
           mockHttpClient.post(
-            Uri.parse('https://signup.example.com/login/signup'),
+            Uri.parse('https://signup.example.com/login/register'),
             headers: {'content-type': 'application/json'},
             body: '{"email":"newuser","password":"newpass"}',
           ),
         ).called(1);
         verify(
-          mockFusionAuthClient.resourceOwnerPasswordCredentialsGrant(
-            'newuser',
-            'newpass',
+          mockFusionAuthClient.login(
+            username: 'newuser',
+            password: 'newpass',
+            scope: 'openid offline_access',
+            lastLoginCredentials: null,
           ),
         ).called(1);
       });
@@ -288,6 +334,14 @@ void main() {
       });
 
       test('recoverPassword returns true (placeholder)', () async {
+        when(
+          mockHttpClient.post(
+            Uri.parse('https://signup.example.com/login/forgot-password'),
+            headers: anyNamed('headers'),
+            body: anyNamed('body'),
+          ),
+        ).thenAnswer((_) async => http.Response('', 200));
+
         final result = await authService.recoverPassword('email@example.com');
         async.elapse(Duration.zero); // Add this line
         expect(result, isTrue);
@@ -304,6 +358,7 @@ void main() {
         verify(mockSecureStorage.delete(key: 'accessToken')).called(1);
         verify(mockSecureStorage.delete(key: 'refreshToken')).called(1);
         verify(mockSecureStorage.delete(key: 'userID')).called(1);
+        verify(mockSecureStorage.delete(key: 'lastLoginCredentials')).called(1);
       });
 
       group('checkLoginStatus', () {
@@ -318,9 +373,16 @@ void main() {
             mockSecureStorage.read(key: 'userID'),
           ).thenAnswer((_) async => 'user123');
           when(
+            mockSecureStorage.read(key: 'deviceID'),
+          ).thenAnswer((_) async => 'device-id');
+          when(
+            mockSecureStorage.read(key: 'lastLoginCredentials'),
+          ).thenAnswer((_) async => null);
+          when(
             mockJwtDecoder.isExpired('valid_access_token'),
           ).thenReturn(false);
 
+          await authService.init();
           final result = await authService.checkLoginStatus();
           async.elapse(
             const Duration(hours: 1),
@@ -342,8 +404,14 @@ void main() {
               mockSecureStorage.read(key: 'refreshToken'),
             ).thenAnswer((_) async => 'valid_refresh_token');
             when(
+              mockSecureStorage.read(key: 'lastLoginCredentials'),
+            ).thenAnswer((_) async => 'valid_last_login_credentials');
+            when(
               mockSecureStorage.read(key: 'userID'),
             ).thenAnswer((_) async => 'user123');
+            when(
+              mockSecureStorage.read(key: 'deviceID'),
+            ).thenAnswer((_) async => 'device-id');
             when(
               mockJwtDecoder.isExpired('expired_access_token'),
             ).thenReturn(true);
@@ -356,7 +424,7 @@ void main() {
               refreshToken: 'new_refresh',
             );
             when(
-              mockFusionAuthClient.refreshTokenGrant('valid_refresh_token'),
+              mockFusionAuthClient.refreshTokenGrant('valid_last_login_credentials'),
             ).thenAnswer((_) async => newTokenResponse);
             when(
               mockSecureStorage.write(
@@ -365,6 +433,7 @@ void main() {
               ),
             ).thenAnswer((_) async => {});
 
+            await authService.init();
             final result = await authService.checkLoginStatus();
             async.elapse(
               const Duration(hours: 1),
@@ -374,7 +443,7 @@ void main() {
             verify(mockSecureStorage.read(key: 'accessToken')).called(1);
             verify(mockJwtDecoder.isExpired('expired_access_token')).called(1);
             verify(
-              mockFusionAuthClient.refreshTokenGrant('valid_refresh_token'),
+              mockFusionAuthClient.refreshTokenGrant('valid_last_login_credentials'),
             ).called(1);
             verify(
               mockSecureStorage.write(key: 'accessToken', value: 'new_access'),
@@ -398,18 +467,25 @@ void main() {
               mockSecureStorage.read(key: 'refreshToken'),
             ).thenAnswer((_) async => 'invalid_refresh_token');
             when(
+              mockSecureStorage.read(key: 'lastLoginCredentials'),
+            ).thenAnswer((_) async => 'valid_last_login_credentials');
+            when(
               mockSecureStorage.read(key: 'userID'),
             ).thenAnswer((_) async => 'user123');
+            when(
+              mockSecureStorage.read(key: 'deviceID'),
+            ).thenAnswer((_) async => 'device-id');
             when(
               mockJwtDecoder.isExpired('expired_access_token'),
             ).thenReturn(true);
             when(
-              mockFusionAuthClient.refreshTokenGrant('invalid_refresh_token'),
+              mockFusionAuthClient.refreshTokenGrant('valid_last_login_credentials'),
             ).thenThrow('Refresh failed');
             when(
               mockSecureStorage.delete(key: anyNamed('key')),
             ).thenAnswer((_) async => {});
 
+            await authService.init();
             final result = await authService.checkLoginStatus();
             async.elapse(Duration.zero); // Add this line
 
@@ -417,7 +493,7 @@ void main() {
             verify(mockSecureStorage.read(key: 'accessToken')).called(1);
             verify(mockJwtDecoder.isExpired('expired_access_token')).called(1);
             verify(
-              mockFusionAuthClient.refreshTokenGrant('invalid_refresh_token'),
+              mockFusionAuthClient.refreshTokenGrant('valid_last_login_credentials'),
             ).called(1);
             verify(mockSecureStorage.delete(key: 'accessToken')).called(1);
             verify(mockSecureStorage.delete(key: 'refreshToken')).called(1);
@@ -435,7 +511,14 @@ void main() {
           when(
             mockSecureStorage.read(key: 'userID'),
           ).thenAnswer((_) async => null);
+          when(
+            mockSecureStorage.read(key: 'deviceID'),
+          ).thenAnswer((_) async => 'device-id');
+          when(
+            mockSecureStorage.read(key: 'lastLoginCredentials'),
+          ).thenAnswer((_) async => null);
 
+          await authService.init();
           final result = await authService.checkLoginStatus();
           async.elapse(Duration.zero); // Add this line
 
@@ -472,10 +555,17 @@ void main() {
             mockSecureStorage.read(key: 'userID'),
           ).thenAnswer((_) async => 'user123');
           when(
+            mockSecureStorage.read(key: 'deviceID'),
+          ).thenAnswer((_) async => 'device-id');
+          when(
+            mockSecureStorage.read(key: 'lastLoginCredentials'),
+          ).thenAnswer((_) async => null);
+          when(
             mockJwtDecoder.isExpired('mock_access_token'),
           ).thenReturn(false);
           when(mockJwtDecoder.decode('mock_access_token')).thenReturn(tokenData);
 
+          await authService.init();
           await authService.checkLoginStatus();
           async.elapse(Duration.zero);
 
@@ -500,6 +590,10 @@ void main() {
               value: anyNamed('value'),
             ),
           ).thenAnswer((_) async => {});
+          when(mockLibloginNative.login(
+            authUri: anyNamed('authUri'),
+            redirectUri: anyNamed('redirectUri'),
+          )).thenAnswer((_) async => true);
 
           final result = await authService.initiateGoogleLogin();
           async.elapse(Duration.zero); // Add this line
@@ -511,20 +605,23 @@ void main() {
               value: anyNamed('value'),
             ),
           ).called(1);
+          verify(mockLibloginNative.login(
+            authUri: anyNamed('authUri'),
+            redirectUri: config.loginRedirectURI,
+          )).called(1);
         });
 
-        test('returns false if url_launcher fails to launch', () async {
-          // Override the global mock for this specific test to simulate failure
-          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-              .setMockMethodCallHandler(
-                const MethodChannel('plugins.flutter.io/url_launcher'),
-                (MethodCall methodCall) async {
-                  if (methodCall.method == 'canLaunch') {
-                    return false; // Simulate canLaunchUrl returning false
-                  }
-                  return null;
-                },
-              );
+        test('returns false if LibloginNative fails to launch', () async {
+          when(
+            mockSecureStorage.write(
+              key: 'code_verifier',
+              value: anyNamed('value'),
+            ),
+          ).thenAnswer((_) async => {});
+          when(mockLibloginNative.login(
+            authUri: anyNamed('authUri'),
+            redirectUri: anyNamed('redirectUri'),
+          )).thenAnswer((_) async => false);
 
           final result = await authService.initiateGoogleLogin();
           async.elapse(Duration.zero); // Add this line
@@ -535,7 +632,11 @@ void main() {
               key: 'code_verifier',
               value: anyNamed('value'),
             ),
-          ).called(1); // Still called, but launch fails
+          ).called(1);
+          verify(mockLibloginNative.login(
+            authUri: anyNamed('authUri'),
+            redirectUri: config.loginRedirectURI,
+          )).called(1);
         });
       });
 
@@ -568,7 +669,8 @@ void main() {
             refreshToken: 'refresh',
           );
 
-          authService.codeVerifier = 'mock_code_verifier';
+          when(mockSecureStorage.read(key: 'code_verifier'))
+              .thenAnswer((_) async => 'mock_code_verifier');
           when(
             mockFusionAuthClient.exchangeAuthorizationCode(
               'auth_code',
@@ -587,18 +689,14 @@ void main() {
             completer.complete(success);
           });
 
-          // Simulate the MethodChannel call that triggers _processAuthRedirect
-          await TestDefaultBinaryMessengerBinding
-              .instance
-              .defaultBinaryMessenger
-              .handlePlatformMessage(
-                'me.gurupras.liblogin',
-                const StandardMethodCodec().encodeMethodCall(
-                  MethodCall('handleAuthRedirect', uri.toString()),
-                ),
-                (ByteData? data) {},
-              );
+          // Capture the handler
+          final verifyResult = verify(mockLibloginNative.setAuthRedirectHandler(captureAny));
+          final handler = verifyResult.captured.single as Function(String);
+          
+          // Trigger the handler
+          handler(uri.toString());
 
+          async.flushMicrotasks(); // Ensure microtasks are run
           async.elapse(
             const Duration(hours: 1),
           ); // Elapse enough time for the timer
@@ -623,16 +721,14 @@ void main() {
             completer.complete(success);
           });
 
-          await TestDefaultBinaryMessengerBinding
-              .instance
-              .defaultBinaryMessenger
-              .handlePlatformMessage(
-                'me.gurupras.liblogin',
-                const StandardMethodCodec().encodeMethodCall(
-                  MethodCall('handleAuthRedirect', uri.toString()),
-                ),
-                (ByteData? data) {},
-              );
+          // Capture the handler
+          final verifyResult = verify(mockLibloginNative.setAuthRedirectHandler(captureAny));
+          final handler = verifyResult.captured.single as Function(String);
+          
+          // Trigger the handler
+          handler(uri.toString());
+
+          async.flushMicrotasks();
           async.elapse(Duration.zero); // Add this line
 
           expect(await completer.future, isFalse);
@@ -652,7 +748,8 @@ void main() {
               'https://example.com/callback?code=auth_code',
             );
 
-            authService.codeVerifier = 'mock_code_verifier';
+            when(mockSecureStorage.read(key: 'code_verifier'))
+                .thenAnswer((_) async => 'mock_code_verifier');
             when(
               mockFusionAuthClient.exchangeAuthorizationCode(
                 'auth_code',
@@ -665,16 +762,14 @@ void main() {
               completer.complete(success);
             });
 
-            await TestDefaultBinaryMessengerBinding
-                .instance
-                .defaultBinaryMessenger
-                .handlePlatformMessage(
-                  'me.gurupras.liblogin',
-                  const StandardMethodCodec().encodeMethodCall(
-                    MethodCall('handleAuthRedirect', uri.toString()),
-                  ),
-                  (ByteData? data) {},
-                );
+            // Capture the handler
+            final verifyResult = verify(mockLibloginNative.setAuthRedirectHandler(captureAny));
+            final handler = verifyResult.captured.single as Function(String);
+            
+            // Trigger the handler
+            handler(uri.toString());
+
+            async.flushMicrotasks();
             async.elapse(Duration.zero); // Add this line
 
             expect(await completer.future, isFalse);

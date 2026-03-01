@@ -5,6 +5,7 @@ import 'package:liblogin/src/login_config.dart';
 
 class FusionAuthClient {
   final String domain;
+  final String signupOrigin;
   final String clientID;
   final String tenantID;
   final String redirectUri;
@@ -12,17 +13,64 @@ class FusionAuthClient {
 
   FusionAuthClient({required LoginConfig config, http.Client? httpClient})
     : domain = config.loginDomain,
+      signupOrigin = config.signupOrigin,
       clientID = config.loginClientID,
       tenantID = config.loginTenantID,
       redirectUri = config.loginRedirectURI,
       _client = httpClient ?? http.Client();
+
+  String get _origin => domain.contains('://') ? domain : 'https://$domain';
+
+  String? _getCredentialsString(dynamic lastLoginCredentials) {
+    if (lastLoginCredentials == null) {
+      return null;
+    }
+    if (lastLoginCredentials is Map && lastLoginCredentials.containsKey('data')) {
+      return lastLoginCredentials['data'] as String?;
+    }
+    if (lastLoginCredentials is String) {
+      return lastLoginCredentials;
+    }
+    return json.encode(lastLoginCredentials);
+  }
+
+  Future<LoginResponse> login({
+    required String username,
+    required String password,
+    String? scope,
+    Map<String, dynamic> device = const {},
+    dynamic lastLoginCredentials,
+  }) async {
+    final body = {
+      'username': username,
+      'password': password,
+      'clientID': clientID,
+      if (scope != null) 'scope': scope,
+      'device': device,
+      if (lastLoginCredentials != null)
+        'lastLoginCredentials': _getCredentialsString(lastLoginCredentials),
+    };
+
+    final result = await _client.post(
+      Uri.parse('$signupOrigin/login/login'),
+      headers: {'content-type': 'application/json'},
+      body: json.encode(body),
+    );
+
+    if (result.statusCode == 200) {
+      final response = json.decode(result.body);
+      return LoginResponse.fromJson(response);
+    } else {
+      throw result.body;
+    }
+  }
 
   Future<TokenResponse> resourceOwnerPasswordCredentialsGrant(
     String username,
     String password,
   ) async {
     final result = await _client.post(
-      Uri.parse('https://$domain/oauth2/token'),
+      Uri.parse('$_origin/oauth2/token'),
       headers: {'content-type': 'application/x-www-form-urlencoded'},
       body: {
         'client_id': clientID,
@@ -41,17 +89,17 @@ class FusionAuthClient {
     }
   }
 
-  Future<TokenResponse> refreshTokenGrant(String refreshToken) async {
+  Future<TokenResponse> refreshTokenGrant(dynamic lastLoginCredentials) async {
     final body = {
-      'client_id': clientID,
-      'grant_type': 'refresh_token',
-      'refresh_token': refreshToken,
+      'lastLoginCredentials': _getCredentialsString(lastLoginCredentials),
+      'clientID': clientID,
+      'includeRefreshToken': true,
     };
 
     final result = await _client.post(
-      Uri.parse('https://$domain/oauth2/token'),
-      headers: {'content-type': 'application/x-www-form-urlencoded'},
-      body: body,
+      Uri.parse('$signupOrigin/login/refresh-tokens'),
+      headers: {'content-type': 'application/json'},
+      body: json.encode(body),
     );
 
     if (result.statusCode == 200) {
@@ -67,7 +115,7 @@ class FusionAuthClient {
     String codeVerifier,
   ) async {
     final result = await _client.post(
-      Uri.parse('https://$domain/oauth2/token'),
+      Uri.parse('$_origin/oauth2/token'),
       headers: {'content-type': 'application/x-www-form-urlencoded'},
       body: {
         'client_id': clientID,

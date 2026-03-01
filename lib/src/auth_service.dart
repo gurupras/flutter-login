@@ -30,6 +30,7 @@ class AuthService {
   static const String _accessTokenKey = 'accessToken';
   static const String _refreshTokenKey = 'refreshToken';
   static const String _userIDKey = 'userID';
+  static const String _lastLoginCredentialsKey = 'lastLoginCredentials';
 
   final log = Logger(
     printer: PrefixPrinter(
@@ -46,12 +47,14 @@ class AuthService {
   String? _currentAccessToken;
   String? _currentRefreshToken;
   String? _currentDeviceID;
+  dynamic _currentLastLoginCredentials;
 
   final StreamController<bool> _authRedirectController =
       StreamController<bool>.broadcast();
   Stream<bool> get authRedirectStream => _authRedirectController.stream;
 
   String? get currentAccessToken => _currentAccessToken;
+  dynamic get lastLoginCredentials => _currentLastLoginCredentials;
 
   DecodedAccessToken? get decodedAccessToken {
     if (_currentAccessToken == null) {
@@ -63,12 +66,15 @@ class AuthService {
   Timer? _refreshTokenTimer;
   bool _isRefreshing = false;
 
+  final LibloginNative _libloginNative;
+
   AuthService({
     required LoginConfig config,
     FlutterSecureStorage? secureStorage,
     http.Client? httpClient,
     JwtDecoderWrapper? jwtDecoder,
     FusionAuthClient? fusionAuthClient, // Add this for injection
+    LibloginNative? libloginNative,
   })  : _config = config,
         _secureStorage = secureStorage ?? const FlutterSecureStorage(),
         _httpClient = httpClient ?? http.Client(),
@@ -77,8 +83,9 @@ class AuthService {
             FusionAuthClient(
               config: config,
               httpClient: httpClient ?? http.Client(),
-            ) {
-    LibloginNative().setAuthRedirectHandler((url) => _handleAuthRedirect(url));
+            ),
+        _libloginNative = libloginNative ?? LibloginNative() {
+    _libloginNative.setAuthRedirectHandler((url) => _handleAuthRedirect(url));
   }
 
   Future<void> _handleAuthRedirect(String urlString) async {
@@ -92,6 +99,15 @@ class AuthService {
     if (_currentDeviceID == null) {
       _currentDeviceID = nanoid();
       await _secureStorage.write(key: _deviceIDKey, value: _currentDeviceID);
+    }
+    _currentLastLoginCredentials =
+        await _secureStorage.read(key: _lastLoginCredentialsKey);
+    if (_currentLastLoginCredentials != null) {
+      try {
+        _currentLastLoginCredentials = json.decode(_currentLastLoginCredentials);
+      } catch (e) {
+        // Not JSON, keep as string
+      }
     }
   }
 
@@ -126,13 +142,17 @@ class AuthService {
 
   Future<bool> login(String username, String password) async {
     try {
-      final tokens = await _fusionAuthClient
-          .resourceOwnerPasswordCredentialsGrant(username, password);
-      await _storeTokens(tokens);
+      final response = await _fusionAuthClient.login(
+        username: username,
+        password: password,
+        scope: 'openid offline_access',
+        lastLoginCredentials: _currentLastLoginCredentials,
+      );
+      await _storeLoginResponse(response);
 
       return true;
-    } catch (e) {
-      log.e('Login failed: $e');
+    } catch (e, stackTrace) {
+      log.e('Login failed', error: e, stackTrace: stackTrace);
       return false;
     }
   }
@@ -140,7 +160,7 @@ class AuthService {
   Future<bool> signUp(String username, String password) async {
     try {
       final response = await _httpClient.post(
-        Uri.parse('${_config.signupOrigin}/login/signup'),
+        Uri.parse('${_config.signupOrigin}/login/register'),
         headers: {'content-type': 'application/json'},
         body: json.encode({'email': username, 'password': password}),
       );
@@ -155,8 +175,8 @@ class AuthService {
 
         return false;
       }
-    } catch (e) {
-      log.e('Sign up failed: $e');
+    } catch (e, stackTrace) {
+      log.e('Sign up failed', error: e, stackTrace: stackTrace);
       return false;
     }
   }
@@ -172,8 +192,11 @@ class AuthService {
         value: codeVerifier,
       );
 
-      final Uri authUri =
-          Uri.parse('https://${_config.loginDomain}/oauth2/authorize').replace(
+      final String origin = _config.loginDomain.contains('://')
+          ? _config.loginDomain
+          : 'https://${_config.loginDomain}';
+
+      final Uri authUri = Uri.parse('$origin/oauth2/authorize').replace(
         queryParameters: {
           'client_id': _config.loginClientID,
           'redirect_uri': _config.loginRedirectURI,
@@ -187,7 +210,7 @@ class AuthService {
       );
 
       // Delegate the platform-specific login flow to the plugin
-      final bool launched = await LibloginNative().login(
+      final bool launched = await _libloginNative.login(
         authUri: authUri,
         redirectUri: _config.loginRedirectURI,
       );
@@ -217,19 +240,68 @@ class AuthService {
   }
 
   Future<bool> recoverPassword(String email) async {
-    // This is a placeholder. Actual implementation would involve FusionAuth API for password recovery.
-    log.i('Password recovery requested for: $email');
-    await Future.delayed(const Duration(seconds: 1));
-    return true;
+    try {
+      final response = await _httpClient.post(
+        Uri.parse('${_config.signupOrigin}/login/forgot-password'),
+        headers: {'content-type': 'application/json'},
+        body: json.encode({'email': email}),
+      );
+
+      if (response.statusCode == 200) {
+        log.i('Password recovery initiated for: $email');
+        return true;
+      } else {
+        log.e('Password recovery failed: ${response.body}');
+        return false;
+      }
+    } catch (e, stackTrace) {
+      log.e('Password recovery failed', error: e, stackTrace: stackTrace);
+      return false;
+    }
   }
 
   Future<void> logout() async {
     await _secureStorage.delete(key: _accessTokenKey);
     await _secureStorage.delete(key: _refreshTokenKey);
     await _secureStorage.delete(key: _userIDKey);
+    await _secureStorage.delete(key: _lastLoginCredentialsKey);
     _currentAccessToken = null;
     _currentRefreshToken = null;
+    _currentLastLoginCredentials = null;
     _refreshTokenTimer?.cancel();
+  }
+
+  Future<void> _storeLoginResponse(LoginResponse response) async {
+    _currentAccessToken = response.accessToken;
+    _currentRefreshToken = response.refreshToken;
+    _currentLastLoginCredentials = response.lastLoginCredentials;
+
+    await _secureStorage.write(
+      key: _accessTokenKey,
+      value: response.accessToken,
+    );
+    if (response.refreshToken != null) {
+      await _secureStorage.write(
+        key: _refreshTokenKey,
+        value: response.refreshToken,
+      );
+    }
+    if (response.lastLoginCredentials != null) {
+      final value = response.lastLoginCredentials is String
+          ? response.lastLoginCredentials
+          : json.encode(response.lastLoginCredentials);
+      await _secureStorage.write(
+        key: _lastLoginCredentialsKey,
+        value: value,
+      );
+    }
+
+    // Extract userID from decoded token or user object
+    final decoded = _jwtDecoder.decode(response.accessToken);
+    final userID = decoded['sub'] as String;
+    await _secureStorage.write(key: _userIDKey, value: userID);
+
+    _scheduleTokenRefresh();
   }
 
   Future<void> _storeTokens(TokenResponse tokens) async {
@@ -237,11 +309,22 @@ class AuthService {
     _currentRefreshToken = tokens.refreshToken;
 
     await _secureStorage.write(key: _accessTokenKey, value: tokens.accessToken);
-    await _secureStorage.write(
-      key: _refreshTokenKey,
-      value: tokens.refreshToken,
-    );
-    await _secureStorage.write(key: _userIDKey, value: tokens.userID);
+    if (tokens.refreshToken != null) {
+      await _secureStorage.write(
+        key: _refreshTokenKey,
+        value: tokens.refreshToken,
+      );
+    }
+
+    String? userID = tokens.userID;
+    if (userID == null) {
+      final decoded = _jwtDecoder.decode(tokens.accessToken);
+      userID = decoded['sub'] as String?;
+    }
+
+    if (userID != null) {
+      await _secureStorage.write(key: _userIDKey, value: userID);
+    }
 
     _scheduleTokenRefresh();
   }
@@ -310,11 +393,11 @@ class AuthService {
 
       _scheduleTokenRefresh();
       return true;
-    } else if (_currentRefreshToken != null) {
+    } else if (_currentLastLoginCredentials != null) {
       // Try to refresh the token
       try {
         final newTokens = await _fusionAuthClient.refreshTokenGrant(
-          _currentRefreshToken!,
+          _currentLastLoginCredentials!,
         );
         await _storeTokens(newTokens);
 
