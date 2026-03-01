@@ -35,6 +35,7 @@ void main() {
             .thenAnswer((_) async => true);
         when(mockAuthService.currentAccessToken)
             .thenReturn('mock_access_token');
+        when(mockAuthService.currentIdToken).thenReturn('mock_id_token');
         when(mockAuthService.decodedAccessToken).thenReturn(mockDecodedToken);
         return AuthBloc(authService: mockAuthService);
       },
@@ -44,6 +45,7 @@ void main() {
         AuthLoading(),
         AuthAuthenticated(
           accessToken: 'mock_access_token',
+          idToken: 'mock_id_token',
           decodedAccessToken: mockDecodedToken,
         )
       ],
@@ -91,6 +93,7 @@ void main() {
             .thenAnswer((_) async => true);
         when(mockAuthService.currentAccessToken)
             .thenReturn('mock_access_token');
+        when(mockAuthService.currentIdToken).thenReturn('mock_id_token');
         when(mockAuthService.decodedAccessToken).thenReturn(mockDecodedToken);
         return AuthBloc(authService: mockAuthService);
       },
@@ -100,6 +103,7 @@ void main() {
         AuthLoading(),
         AuthAuthenticated(
           accessToken: 'mock_access_token',
+          idToken: 'mock_id_token',
           decodedAccessToken: mockDecodedToken,
         )
       ],
@@ -175,6 +179,7 @@ void main() {
         when(mockAuthService.checkLoginStatus()).thenAnswer((_) async => true);
         when(mockAuthService.currentAccessToken)
             .thenReturn('mock_access_token');
+        when(mockAuthService.currentIdToken).thenReturn('mock_id_token');
         when(mockAuthService.decodedAccessToken).thenReturn(mockDecodedToken);
         return AuthBloc(authService: mockAuthService);
       },
@@ -183,6 +188,7 @@ void main() {
         AuthLoading(),
         AuthAuthenticated(
           accessToken: 'mock_access_token',
+          idToken: 'mock_id_token',
           decodedAccessToken: mockDecodedToken,
         )
       ],
@@ -214,6 +220,7 @@ void main() {
             .thenAnswer((_) async => true); // Mock for AuthCheckStatus
         when(mockAuthService.currentAccessToken)
             .thenReturn('mock_access_token');
+        when(mockAuthService.currentIdToken).thenReturn('mock_id_token');
         when(mockAuthService.decodedAccessToken).thenReturn(mockDecodedToken);
         final bloc = AuthBloc(authService: mockAuthService);
         authRedirectController.add(true);
@@ -223,6 +230,7 @@ void main() {
         AuthLoading(),
         AuthAuthenticated(
           accessToken: 'mock_access_token',
+          idToken: 'mock_id_token',
           decodedAccessToken: mockDecodedToken,
         )
       ],

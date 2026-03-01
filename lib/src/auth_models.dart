@@ -106,12 +106,14 @@ class DecodedAccessToken {
 
 class LoginResponse {
   final String accessToken;
+  final String? idToken;
   final String? refreshToken;
   final dynamic lastLoginCredentials;
   final Map<String, dynamic>? user;
 
   LoginResponse({
     required this.accessToken,
+    this.idToken,
     this.refreshToken,
     this.lastLoginCredentials,
     this.user,
@@ -120,6 +122,7 @@ class LoginResponse {
   factory LoginResponse.fromJson(Map<String, dynamic> json) {
     return LoginResponse(
       accessToken: json['access_token'] as String,
+      idToken: json['id_token'] as String?,
       refreshToken: json['refresh_token'] as String?,
       lastLoginCredentials: json['lastLoginCredentials'],
       user: json['user'] as Map<String, dynamic>?,
@@ -129,6 +132,7 @@ class LoginResponse {
   Map<String, dynamic> toJson() {
     return {
       'access_token': accessToken,
+      'id_token': idToken,
       'refresh_token': refreshToken,
       'lastLoginCredentials': lastLoginCredentials,
       'user': user,

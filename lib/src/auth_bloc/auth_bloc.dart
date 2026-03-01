@@ -22,6 +22,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         if (success && authService.currentAccessToken != null) {
           emit(AuthAuthenticated(
             accessToken: authService.currentAccessToken!,
+            idToken: authService.currentIdToken,
             decodedAccessToken: authService.decodedAccessToken!,
           ));
         } else {
@@ -42,6 +43,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         if (success && authService.currentAccessToken != null) {
           emit(AuthAuthenticated(
             accessToken: authService.currentAccessToken!,
+            idToken: authService.currentIdToken,
             decodedAccessToken: authService.decodedAccessToken!,
           ));
         } else {
@@ -82,6 +84,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         if (isAuthenticated && authService.currentAccessToken != null) {
           emit(AuthAuthenticated(
             accessToken: authService.currentAccessToken!,
+            idToken: authService.currentIdToken,
             decodedAccessToken: authService.decodedAccessToken!,
           ));
         } else {

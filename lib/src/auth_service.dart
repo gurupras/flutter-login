@@ -28,6 +28,7 @@ class AuthService {
 
   static const String _deviceIDKey = 'deviceID';
   static const String _accessTokenKey = 'accessToken';
+  static const String _idTokenKey = 'idToken';
   static const String _refreshTokenKey = 'refreshToken';
   static const String _userIDKey = 'userID';
   static const String _lastLoginCredentialsKey = 'lastLoginCredentials';
@@ -45,6 +46,7 @@ class AuthService {
   );
 
   String? _currentAccessToken;
+  String? _currentIdToken;
   String? _currentRefreshToken;
   String? _currentDeviceID;
   dynamic _currentLastLoginCredentials;
@@ -54,6 +56,7 @@ class AuthService {
   Stream<bool> get authRedirectStream => _authRedirectController.stream;
 
   String? get currentAccessToken => _currentAccessToken;
+  String? get currentIdToken => _currentIdToken;
   dynamic get lastLoginCredentials => _currentLastLoginCredentials;
 
   DecodedAccessToken? get decodedAccessToken {
@@ -103,6 +106,7 @@ class AuthService {
       _currentDeviceID = nanoid();
       await _secureStorage.write(key: _deviceIDKey, value: _currentDeviceID);
     }
+    _currentIdToken = await _secureStorage.read(key: _idTokenKey);
     _currentLastLoginCredentials = await _secureStorage.read(
       key: _lastLoginCredentialsKey,
     );
@@ -300,10 +304,12 @@ class AuthService {
 
   Future<void> logout() async {
     await _secureStorage.delete(key: _accessTokenKey);
+    await _secureStorage.delete(key: _idTokenKey);
     await _secureStorage.delete(key: _refreshTokenKey);
     await _secureStorage.delete(key: _userIDKey);
     await _secureStorage.delete(key: _lastLoginCredentialsKey);
     _currentAccessToken = null;
+    _currentIdToken = null;
     _currentRefreshToken = null;
     _currentLastLoginCredentials = null;
     _refreshTokenTimer?.cancel();
@@ -311,6 +317,7 @@ class AuthService {
 
   Future<void> _storeLoginResponse(LoginResponse response) async {
     _currentAccessToken = response.accessToken;
+    _currentIdToken = response.idToken;
     _currentRefreshToken = response.refreshToken;
     _currentLastLoginCredentials = response.lastLoginCredentials;
 
@@ -318,6 +325,12 @@ class AuthService {
       key: _accessTokenKey,
       value: response.accessToken,
     );
+    if (response.idToken != null) {
+      await _secureStorage.write(
+        key: _idTokenKey,
+        value: response.idToken,
+      );
+    }
     if (response.refreshToken != null) {
       await _secureStorage.write(
         key: _refreshTokenKey,
@@ -341,9 +354,16 @@ class AuthService {
 
   Future<void> _storeTokens(TokenResponse tokens) async {
     _currentAccessToken = tokens.accessToken;
+    _currentIdToken = tokens.idToken;
     _currentRefreshToken = tokens.refreshToken;
 
     await _secureStorage.write(key: _accessTokenKey, value: tokens.accessToken);
+    if (tokens.idToken != null) {
+      await _secureStorage.write(
+        key: _idTokenKey,
+        value: tokens.idToken,
+      );
+    }
     if (tokens.refreshToken != null) {
       await _secureStorage.write(
         key: _refreshTokenKey,
@@ -419,6 +439,7 @@ class AuthService {
 
   Future<bool> checkLoginStatus() async {
     _currentAccessToken = await _secureStorage.read(key: _accessTokenKey);
+    _currentIdToken = await _secureStorage.read(key: _idTokenKey);
     _currentRefreshToken = await _secureStorage.read(key: _refreshTokenKey);
     await _secureStorage.read(key: _userIDKey);
 

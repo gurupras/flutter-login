@@ -103,6 +103,10 @@ void main() {
               },
             );
 
+        when(
+          mockSecureStorage.read(key: 'idToken'),
+        ).thenAnswer((_) async => null);
+
         authService = AuthService(
           config: config,
           secureStorage: mockSecureStorage,
@@ -170,6 +174,7 @@ void main() {
         () async {
           final loginResponse = LoginResponse(
             accessToken: 'access',
+            idToken: 'id_token',
             refreshToken: 'refresh',
             lastLoginCredentials: 'last',
             user: {'id': 'user123'},
@@ -200,6 +205,7 @@ void main() {
           ); // Elapse time for token refresh timer
 
           expect(result, isTrue);
+          expect(authService.currentIdToken, 'id_token');
           verify(
             mockFusionAuthClient.login(
               username: 'user',
@@ -210,6 +216,9 @@ void main() {
           ).called(1);
           verify(
             mockSecureStorage.write(key: 'accessToken', value: 'access'),
+          ).called(1);
+          verify(
+            mockSecureStorage.write(key: 'idToken', value: 'id_token'),
           ).called(1);
           verify(
             mockSecureStorage.write(key: 'refreshToken', value: 'refresh'),
@@ -418,6 +427,7 @@ void main() {
         async.elapse(Duration.zero); // Add this line
 
         verify(mockSecureStorage.delete(key: 'accessToken')).called(1);
+        verify(mockSecureStorage.delete(key: 'idToken')).called(1);
         verify(mockSecureStorage.delete(key: 'refreshToken')).called(1);
         verify(mockSecureStorage.delete(key: 'userID')).called(1);
         verify(mockSecureStorage.delete(key: 'lastLoginCredentials')).called(1);
@@ -747,6 +757,7 @@ void main() {
           final uri = Uri.parse('https://example.com/callback?code=auth_code');
           final tokenResponse = TokenResponse(
             accessToken: 'access',
+            idToken: 'id_token',
             expiresIn: 3600,
             tokenType: 'Bearer',
             userID: 'user123',
@@ -789,6 +800,7 @@ void main() {
           ); // Elapse enough time for the timer
 
           expect(await completer.future, isTrue);
+          expect(authService.currentIdToken, 'id_token');
           verify(
             mockFusionAuthClient.exchangeAuthorizationCode(
               'auth_code',
@@ -797,6 +809,9 @@ void main() {
           ).called(1);
           verify(
             mockSecureStorage.write(key: 'accessToken', value: 'access'),
+          ).called(1);
+          verify(
+            mockSecureStorage.write(key: 'idToken', value: 'id_token'),
           ).called(1);
         });
 
