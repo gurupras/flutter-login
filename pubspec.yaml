@@ -28,8 +28,7 @@ dependencies:
   flutter_secure_storage: ^9.0.0
   http: ^1.2.1
   nanoid: ^1.0.0
-  device_info_plus: ^11.5.0
-  equatable: ^2.0.5
+equatable: ^2.0.5
 
 dev_dependencies:
   flutter_test:
