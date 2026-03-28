@@ -91,11 +91,12 @@ class AuthService {
              httpClient: httpClient ?? http.Client(),
            ),
        _libloginNative = libloginNative ?? LibloginNative() {
+    log.i('[AuthService] constructor: registering auth redirect handler');
     _libloginNative.setAuthRedirectHandler((url) => _handleAuthRedirect(url));
   }
 
   Future<void> _handleAuthRedirect(String urlString) async {
-    log.i('Received handleAuthRedirect from native code with URL: $urlString');
+    log.i('[AuthService] _handleAuthRedirect called with URL: $urlString');
     final Uri uri = Uri.parse(urlString);
     await _processAuthRedirect(uri);
   }
