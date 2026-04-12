@@ -7,7 +7,7 @@ A comprehensive Flutter authentication library supporting FusionAuth, OAuth2, an
 - **FusionAuth Integration**: Seamless connection with FusionAuth for user management.
 - **Social Login**: Support for Google Login via OAuth2.
 - **Secure Storage**: Automatic token management and secure storage using `flutter_secure_storage`.
-- **Auto-Refresh**: Background token refresh logic to keep users logged in.
+- **Auto-Refresh**: Proactive background token refresh 15 minutes before expiry, using the standard OAuth2 refresh token grant. Works for all auth methods including Google OAuth.
 - **Bloc-based Architecture**: Easy integration into Flutter apps using the BLoC pattern.
 - **Cross-Platform**: Custom native implementations for Android and iOS to handle OAuth redirects.
 
@@ -140,7 +140,22 @@ if (decodedToken != null) {
 }
 ```
 
+### 5. Handling Background Token Refresh
+
+When the background refresh timer fires (15 minutes before expiry), the library refreshes the token and emits a new `AuthAuthenticated` state on the bloc. If you pass the access token to an API client, update it whenever the state changes:
+
+```dart
+BlocListener<AuthBloc, AuthState>(
+  listener: (context, state) {
+    if (state is AuthAuthenticated) {
+      apiClient.setToken(state.accessToken);
+    }
+  },
+  child: ...,
+)
+```
+
 ## Troubleshooting
 
 - **Redirect not working**: Ensure the `loginRedirectURI` in your `LoginConfig` matches the `scheme` and `host` configured in `AndroidManifest.xml` and `Info.plist` exactly.
-- **Session expiry**: The library automatically schedules a token refresh 15 minutes before expiration. Ensure `AuthService.init()` is called on app start.
+- **Session expiry**: The library proactively refreshes tokens 15 minutes before expiry using the standard OAuth2 refresh token grant. This works for all login methods, including Google OAuth. Ensure `AuthService.init()` is called on app start so the device ID and stored credentials are loaded before the first `AuthCheckStatus` event.
