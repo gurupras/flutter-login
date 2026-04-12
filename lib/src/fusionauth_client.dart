@@ -66,6 +66,25 @@ class FusionAuthClient {
     }
   }
 
+  Future<TokenResponse> oauthRefreshTokenGrant(String refreshToken) async {
+    final result = await _client.post(
+      Uri.parse('$_origin/oauth2/token'),
+      headers: {'content-type': 'application/x-www-form-urlencoded'},
+      body: {
+        'client_id': clientID,
+        'grant_type': 'refresh_token',
+        'refresh_token': refreshToken,
+      },
+    );
+
+    if (result.statusCode == 200) {
+      final response = json.decode(result.body);
+      return TokenResponse.fromJson(response);
+    } else {
+      throw result.body;
+    }
+  }
+
   Future<TokenResponse> resourceOwnerPasswordCredentialsGrant(
     String username,
     String password,

@@ -661,6 +661,21 @@ class MockFusionAuthClient extends _i1.Mock implements _i12.FusionAuthClient {
           as _i7.Future<_i4.LoginResponse>);
 
   @override
+  _i7.Future<_i4.TokenResponse> oauthRefreshTokenGrant(
+    String? refreshToken,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#oauthRefreshTokenGrant, [refreshToken]),
+            returnValue: _i7.Future<_i4.TokenResponse>.value(
+              _FakeTokenResponse_9(
+                this,
+                Invocation.method(#oauthRefreshTokenGrant, [refreshToken]),
+              ),
+            ),
+          )
+          as _i7.Future<_i4.TokenResponse>);
+
+  @override
   _i7.Future<_i4.TokenResponse> resourceOwnerPasswordCredentialsGrant(
     String? username,
     String? password,
