@@ -447,26 +447,39 @@ class AuthService {
     if (_currentAccessToken != null &&
         !_jwtDecoder.isExpired(_currentAccessToken!)) {
       // Token is valid and not expired
-
       _scheduleTokenRefresh();
       return true;
-    } else if (_currentLastLoginCredentials != null) {
-      // Try to refresh the token
+    }
+
+    // Token expired or absent — try OAuth refresh token first (covers all auth
+    // methods including Google OAuth, which never sets lastLoginCredentials)
+    if (_currentRefreshToken != null) {
+      try {
+        final newTokens = await _fusionAuthClient.oauthRefreshTokenGrant(
+          _currentRefreshToken!,
+        );
+        await _storeTokens(newTokens);
+        return true;
+      } catch (e) {
+        log.e('Failed to refresh with OAuth refresh token: $e');
+        // Fall through to lastLoginCredentials
+      }
+    }
+
+    if (_currentLastLoginCredentials != null) {
       try {
         final newTokens = await _fusionAuthClient.refreshTokenGrant(
           _currentLastLoginCredentials!,
         );
         await _storeTokens(newTokens);
-
         return true;
       } catch (e) {
         log.e('Failed to refresh token: $e');
-        await logout(); // Clear invalid tokens
-
+        await logout();
         return false;
       }
-    } else {
-      return false;
     }
+
+    return false;
   }
 }

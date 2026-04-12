@@ -467,7 +467,7 @@ void main() {
         });
 
         test(
-          'returns true if access token is expired but refresh token is valid and refreshes',
+          'returns true if access token is expired and refreshes via OAuth refresh token',
           () async {
             when(
               mockSecureStorage.read(key: 'accessToken'),
@@ -496,9 +496,7 @@ void main() {
               refreshToken: 'new_refresh',
             );
             when(
-              mockFusionAuthClient.refreshTokenGrant(
-                'valid_last_login_credentials',
-              ),
+              mockFusionAuthClient.oauthRefreshTokenGrant('valid_refresh_token'),
             ).thenAnswer((_) async => newTokenResponse);
             when(
               mockSecureStorage.write(
@@ -517,10 +515,9 @@ void main() {
             verify(mockSecureStorage.read(key: 'accessToken')).called(1);
             verify(mockJwtDecoder.isExpired('expired_access_token')).called(1);
             verify(
-              mockFusionAuthClient.refreshTokenGrant(
-                'valid_last_login_credentials',
-              ),
+              mockFusionAuthClient.oauthRefreshTokenGrant('valid_refresh_token'),
             ).called(1);
+            verifyNever(mockFusionAuthClient.refreshTokenGrant(any));
             verify(
               mockSecureStorage.write(key: 'accessToken', value: 'new_access'),
             ).called(1);
@@ -534,7 +531,124 @@ void main() {
         );
 
         test(
-          'returns false if both access and refresh tokens are invalid',
+          'returns true for Google OAuth cold restart: uses refresh token when no lastLoginCredentials',
+          () async {
+            when(
+              mockSecureStorage.read(key: 'accessToken'),
+            ).thenAnswer((_) async => 'expired_access_token');
+            when(
+              mockSecureStorage.read(key: 'refreshToken'),
+            ).thenAnswer((_) async => 'google_refresh_token');
+            when(
+              mockSecureStorage.read(key: 'lastLoginCredentials'),
+            ).thenAnswer((_) async => null);
+            when(
+              mockSecureStorage.read(key: 'userID'),
+            ).thenAnswer((_) async => 'user123');
+            when(
+              mockSecureStorage.read(key: 'deviceID'),
+            ).thenAnswer((_) async => 'device-id');
+            when(
+              mockJwtDecoder.isExpired('expired_access_token'),
+            ).thenReturn(true);
+
+            final newTokenResponse = TokenResponse(
+              accessToken: 'new_access',
+              expiresIn: 3600,
+              tokenType: 'Bearer',
+              userID: 'user123',
+              refreshToken: 'new_google_refresh',
+            );
+            when(
+              mockFusionAuthClient.oauthRefreshTokenGrant('google_refresh_token'),
+            ).thenAnswer((_) async => newTokenResponse);
+            when(
+              mockSecureStorage.write(
+                key: anyNamed('key'),
+                value: anyNamed('value'),
+              ),
+            ).thenAnswer((_) async => {});
+
+            await authService.init();
+            final result = await authService.checkLoginStatus();
+            async.elapse(const Duration(hours: 1));
+
+            expect(result, isTrue);
+            verify(
+              mockFusionAuthClient.oauthRefreshTokenGrant('google_refresh_token'),
+            ).called(1);
+            verifyNever(mockFusionAuthClient.refreshTokenGrant(any));
+            verify(
+              mockSecureStorage.write(key: 'accessToken', value: 'new_access'),
+            ).called(1);
+          },
+        );
+
+        test(
+          'falls back to lastLoginCredentials when OAuth refresh token grant fails',
+          () async {
+            when(
+              mockSecureStorage.read(key: 'accessToken'),
+            ).thenAnswer((_) async => 'expired_access_token');
+            when(
+              mockSecureStorage.read(key: 'refreshToken'),
+            ).thenAnswer((_) async => 'stale_refresh_token');
+            when(
+              mockSecureStorage.read(key: 'lastLoginCredentials'),
+            ).thenAnswer((_) async => 'valid_last_login_credentials');
+            when(
+              mockSecureStorage.read(key: 'userID'),
+            ).thenAnswer((_) async => 'user123');
+            when(
+              mockSecureStorage.read(key: 'deviceID'),
+            ).thenAnswer((_) async => 'device-id');
+            when(
+              mockJwtDecoder.isExpired('expired_access_token'),
+            ).thenReturn(true);
+
+            final newTokenResponse = TokenResponse(
+              accessToken: 'new_access',
+              expiresIn: 3600,
+              tokenType: 'Bearer',
+              userID: 'user123',
+              refreshToken: 'new_refresh',
+            );
+            when(
+              mockFusionAuthClient.oauthRefreshTokenGrant('stale_refresh_token'),
+            ).thenThrow('Refresh token expired');
+            when(
+              mockFusionAuthClient.refreshTokenGrant(
+                'valid_last_login_credentials',
+              ),
+            ).thenAnswer((_) async => newTokenResponse);
+            when(
+              mockSecureStorage.write(
+                key: anyNamed('key'),
+                value: anyNamed('value'),
+              ),
+            ).thenAnswer((_) async => {});
+
+            await authService.init();
+            final result = await authService.checkLoginStatus();
+            async.elapse(const Duration(hours: 1));
+
+            expect(result, isTrue);
+            verify(
+              mockFusionAuthClient.oauthRefreshTokenGrant('stale_refresh_token'),
+            ).called(1);
+            verify(
+              mockFusionAuthClient.refreshTokenGrant(
+                'valid_last_login_credentials',
+              ),
+            ).called(1);
+            verify(
+              mockSecureStorage.write(key: 'accessToken', value: 'new_access'),
+            ).called(1);
+          },
+        );
+
+        test(
+          'returns false if all refresh attempts fail',
           () async {
             when(
               mockSecureStorage.read(key: 'accessToken'),
@@ -555,6 +669,9 @@ void main() {
               mockJwtDecoder.isExpired('expired_access_token'),
             ).thenReturn(true);
             when(
+              mockFusionAuthClient.oauthRefreshTokenGrant('invalid_refresh_token'),
+            ).thenThrow('Refresh token invalid');
+            when(
               mockFusionAuthClient.refreshTokenGrant(
                 'valid_last_login_credentials',
               ),
@@ -565,11 +682,14 @@ void main() {
 
             await authService.init();
             final result = await authService.checkLoginStatus();
-            async.elapse(Duration.zero); // Add this line
+            async.elapse(Duration.zero);
 
             expect(result, isFalse);
             verify(mockSecureStorage.read(key: 'accessToken')).called(1);
             verify(mockJwtDecoder.isExpired('expired_access_token')).called(1);
+            verify(
+              mockFusionAuthClient.oauthRefreshTokenGrant('invalid_refresh_token'),
+            ).called(1);
             verify(
               mockFusionAuthClient.refreshTokenGrant(
                 'valid_last_login_credentials',
