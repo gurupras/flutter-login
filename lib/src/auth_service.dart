@@ -431,8 +431,24 @@ class AuthService {
     }
     _isRefreshing = true;
     try {
-      log.i('Attempting token refresh...');
-      await checkLoginStatus();
+      log.i('Attempting proactive token refresh...');
+      final TokenResponse newTokens;
+      if (_currentRefreshToken != null) {
+        newTokens = await _fusionAuthClient.oauthRefreshTokenGrant(
+          _currentRefreshToken!,
+        );
+      } else if (_currentLastLoginCredentials != null) {
+        newTokens = await _fusionAuthClient.refreshTokenGrant(
+          _currentLastLoginCredentials!,
+        );
+      } else {
+        log.w('No refresh credentials available for proactive refresh.');
+        return;
+      }
+      await _storeTokens(newTokens);
+      _authRedirectController.add(true);
+    } catch (e) {
+      log.e('Proactive token refresh failed: $e');
     } finally {
       _isRefreshing = false;
     }

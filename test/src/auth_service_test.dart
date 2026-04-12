@@ -701,6 +701,81 @@ void main() {
           },
         );
 
+        test(
+          'background refresh bypasses token validity check and notifies authRedirectStream',
+          () async {
+            // Use a token expiring in 14 min: _scheduleTokenRefresh immediately
+            // calls _attemptTokenRefresh (refresh window = exp-15min is in the
+            // past), bypassing the "token is still valid" short-circuit that
+            // would prevent a real proactive refresh.
+            final tokenExp = DateTime.now().add(const Duration(minutes: 14));
+
+            when(
+              mockSecureStorage.read(key: 'accessToken'),
+            ).thenAnswer((_) async => 'nearly_expired_token');
+            when(
+              mockSecureStorage.read(key: 'refreshToken'),
+            ).thenAnswer((_) async => 'current_refresh_token');
+            when(
+              mockSecureStorage.read(key: 'lastLoginCredentials'),
+            ).thenAnswer((_) async => null);
+            when(
+              mockSecureStorage.read(key: 'userID'),
+            ).thenAnswer((_) async => 'user123');
+            when(
+              mockSecureStorage.read(key: 'deviceID'),
+            ).thenAnswer((_) async => 'device-id');
+            when(
+              mockJwtDecoder.isExpired('nearly_expired_token'),
+            ).thenReturn(false);
+            when(mockJwtDecoder.decode('nearly_expired_token')).thenReturn({
+              'sub': 'user123',
+              'exp': tokenExp.millisecondsSinceEpoch ~/ 1000,
+            });
+
+            final newTokenResponse = TokenResponse(
+              accessToken: 'refreshed_access_token',
+              expiresIn: 3600,
+              tokenType: 'Bearer',
+              userID: 'user123',
+              refreshToken: 'new_refresh_token',
+            );
+            when(
+              mockFusionAuthClient.oauthRefreshTokenGrant('current_refresh_token'),
+            ).thenAnswer((_) async => newTokenResponse);
+            when(mockJwtDecoder.decode('refreshed_access_token')).thenReturn({
+              'sub': 'user123',
+              'exp':
+                  DateTime.now()
+                      .add(const Duration(hours: 1))
+                      .millisecondsSinceEpoch ~/
+                  1000,
+            });
+            when(
+              mockSecureStorage.write(
+                key: anyNamed('key'),
+                value: anyNamed('value'),
+              ),
+            ).thenAnswer((_) async => {});
+
+            final redirectEvents = <bool>[];
+            authService.authRedirectStream.listen(redirectEvents.add);
+
+            await authService.init();
+            await authService.checkLoginStatus();
+            // _attemptTokenRefresh was called fire-and-forget; pump the event
+            // loop so its async work (mock Future completions) finishes.
+            await Future.delayed(Duration.zero);
+            async.elapse(Duration.zero);
+
+            verify(
+              mockFusionAuthClient.oauthRefreshTokenGrant('current_refresh_token'),
+            ).called(1);
+            expect(redirectEvents, contains(true));
+            expect(authService.currentAccessToken, 'refreshed_access_token');
+          },
+        );
+
         test('returns false if no tokens are present', () async {
           when(
             mockSecureStorage.read(key: 'accessToken'),
