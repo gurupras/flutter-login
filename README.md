@@ -113,6 +113,60 @@ The library provides a pre-built `LoginPage` that integrates with `AuthBloc`:
 LoginPage(title: 'My App Login')
 ```
 
+By default this renders the email/password form plus a single Google social
+button (using the `googleIdentityProviderID` from your `LoginConfig`).
+
+#### Configuring social providers
+
+`LoginPage` exposes `LoginProvider` (re-exported from
+[`flutter_login`](https://github.com/gurupras/flutter_login)) so you can supply
+your own list of social buttons. When you provide `socialProviders`, the
+built-in Google entry is replaced — include it explicitly if you still want it.
+
+```dart
+LoginPage(
+  title: 'My App',
+  socialProviders: [
+    LoginProvider(
+      icon: FontAwesome.google,
+      label: 'Continue with Google',
+      callback: () async {
+        await context.read<AuthService>().initiateGoogleLogin();
+        return null;
+      },
+    ),
+    // future: Apple, GitHub, etc.
+  ],
+)
+```
+
+#### Social-only login (no email/password)
+
+Pass `enableEmailPassword: false` to hide the username/password form, leaving
+only the configured social providers. `socialProviders` must be non-empty in
+this mode (asserted at construction).
+
+```dart
+LoginPage(
+  title: 'My App',
+  enableEmailPassword: false,
+  socialProviders: [
+    LoginProvider(
+      icon: FontAwesome.google,
+      label: 'Continue with Google',
+      callback: () async {
+        await context.read<AuthService>().initiateGoogleLogin();
+        return null;
+      },
+    ),
+  ],
+)
+```
+
+You can also pass `termsOfService: [...]` (`TermOfService` is re-exported from
+this library); in social-only mode all entries render below the provider
+buttons.
+
 ### 4. Accessing Token Data
 
 When the user is authenticated, you can access the decoded fields of the access token (such as user ID, roles, etc.).

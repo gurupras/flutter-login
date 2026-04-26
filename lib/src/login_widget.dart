@@ -8,8 +8,36 @@ import 'package:liblogin/src/auth_service.dart';
 
 class LoginPage extends StatelessWidget {
   final String title;
+  final bool enableEmailPassword;
+  final List<LoginProvider>? socialProviders;
+  final List<TermOfService> termsOfService;
 
-  const LoginPage({super.key, this.title = 'App'});
+  const LoginPage({
+    super.key,
+    this.title = 'App',
+    this.enableEmailPassword = true,
+    this.socialProviders,
+    this.termsOfService = const <TermOfService>[],
+  }) : assert(
+         enableEmailPassword ||
+             (socialProviders != null && socialProviders.length > 0),
+         'socialProviders must be non-empty when enableEmailPassword is false.',
+       );
+
+  List<LoginProvider> _resolveProviders(BuildContext context) {
+    if (socialProviders != null) return socialProviders!;
+    return [
+      LoginProvider(
+        icon: FontAwesome.google,
+        label: 'Google',
+        callback: () async {
+          final authService = context.read<AuthService>();
+          await authService.initiateGoogleLogin();
+          return null;
+        },
+      ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,6 +54,9 @@ class LoginPage extends StatelessWidget {
       },
       child: FlutterLogin(
         title: title,
+        hideUserNamePasswordLogin: !enableEmailPassword,
+        loginProviders: _resolveProviders(context),
+        termsOfService: termsOfService,
         onLogin: (loginData) async {
           final bloc = context.read<AuthBloc>();
           final completer = Completer<String?>();
@@ -90,20 +121,6 @@ class LoginPage extends StatelessWidget {
 
           return completer.future;
         },
-        loginProviders: [
-          LoginProvider(
-            icon: FontAwesome.google,
-            label: 'Google',
-            callback: () async {
-              final authService = context.read<AuthService>();
-              final success = await authService.initiateGoogleLogin();
-              if (!success) {
-                // Parent handles error via Bloc
-              }
-              return null;
-            },
-          ),
-        ],
       ),
     );
   }
