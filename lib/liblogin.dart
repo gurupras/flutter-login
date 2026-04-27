@@ -1,7 +1,7 @@
 library liblogin;
 
 export 'package:flutter_login/flutter_login.dart'
-    show LoginProvider, Buttons, TermOfService;
+    show LoginProvider, Buttons, TermOfService, LoginMessages, LoginTheme;
 
 export 'src/login_config.dart';
 export 'src/auth_service.dart';

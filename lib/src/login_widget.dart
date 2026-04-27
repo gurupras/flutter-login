@@ -12,16 +12,46 @@ class LoginPage extends StatelessWidget {
   final List<LoginProvider>? socialProviders;
   final List<TermOfService> termsOfService;
 
+  /// Forwarded to [FlutterLogin.logo]. Accepts an asset path [String] or an
+  /// [ImageProvider]; null hides the logo (FlutterLogin's default).
+  final Object? logo;
+
+  /// Forwarded to [FlutterLogin.messages]. Lets consumers customise prompt
+  /// strings such as the "Or sign in with..." providers title.
+  final LoginMessages? messages;
+
+  /// Forwarded to [FlutterLogin.theme].
+  final LoginTheme? theme;
+
+  /// Forwarded to [FlutterLogin.headerWidget] — rendered above the auth card.
+  final Widget? headerWidget;
+
+  /// Forwarded to [FlutterLogin.footer] — rendered below the auth card.
+  final String? footer;
+
+  /// Forwarded to [FlutterLogin.hideProvidersTitle].
+  final bool hideProvidersTitle;
+
   const LoginPage({
     super.key,
     this.title = 'App',
     this.enableEmailPassword = true,
     this.socialProviders,
     this.termsOfService = const <TermOfService>[],
+    this.logo,
+    this.messages,
+    this.theme,
+    this.headerWidget,
+    this.footer,
+    this.hideProvidersTitle = false,
   }) : assert(
          enableEmailPassword ||
              (socialProviders != null && socialProviders.length > 0),
          'socialProviders must be non-empty when enableEmailPassword is false.',
+       ),
+       assert(
+         logo == null || logo is String || logo is ImageProvider,
+         'logo must be a String (asset path) or an ImageProvider.',
        );
 
   List<LoginProvider> _resolveProviders(BuildContext context) {
@@ -54,6 +84,12 @@ class LoginPage extends StatelessWidget {
       },
       child: FlutterLogin(
         title: title,
+        logo: logo,
+        messages: messages,
+        theme: theme,
+        headerWidget: headerWidget,
+        footer: footer,
+        hideProvidersTitle: hideProvidersTitle,
         hideUserNamePasswordLogin: !enableEmailPassword,
         loginProviders: _resolveProviders(context),
         termsOfService: termsOfService,
