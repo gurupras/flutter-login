@@ -75,17 +75,33 @@ class MockAuthService extends _i1.Mock implements _i3.AuthService {
   );
 
   @override
-  _i4.Future<bool> login(String? username, String? password) =>
+  _i4.Future<bool> login(
+    String? username,
+    String? password, {
+    String? clientId,
+  }) =>
       (super.noSuchMethod(
-            Invocation.method(#login, [username, password]),
+            Invocation.method(
+              #login,
+              [username, password],
+              {#clientId: clientId},
+            ),
             returnValue: _i4.Future<bool>.value(false),
           )
           as _i4.Future<bool>);
 
   @override
-  _i4.Future<bool> signUp(String? username, String? password) =>
+  _i4.Future<bool> signUp(
+    String? username,
+    String? password, {
+    String? clientId,
+  }) =>
       (super.noSuchMethod(
-            Invocation.method(#signUp, [username, password]),
+            Invocation.method(
+              #signUp,
+              [username, password],
+              {#clientId: clientId},
+            ),
             returnValue: _i4.Future<bool>.value(false),
           )
           as _i4.Future<bool>);

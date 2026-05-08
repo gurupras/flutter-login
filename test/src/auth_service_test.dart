@@ -106,6 +106,9 @@ void main() {
         when(
           mockSecureStorage.read(key: 'idToken'),
         ).thenAnswer((_) async => null);
+        when(
+          mockSecureStorage.read(key: 'clientId'),
+        ).thenAnswer((_) async => null);
 
         authService = AuthService(
           config: config,
@@ -197,6 +200,9 @@ void main() {
               key: anyNamed('key'),
               value: anyNamed('value'),
             ),
+          ).thenAnswer((_) async => {});
+          when(
+            mockSecureStorage.delete(key: anyNamed('key')),
           ).thenAnswer((_) async => {});
 
           final result = await authService.login('user', 'pass');
@@ -319,6 +325,9 @@ void main() {
             value: anyNamed('value'),
           ),
         ).thenAnswer((_) async => {});
+        when(
+          mockSecureStorage.delete(key: anyNamed('key')),
+        ).thenAnswer((_) async => {});
 
         final result = await authService.signUp('newuser', 'newpass');
         async.elapse(
@@ -342,6 +351,197 @@ void main() {
           ),
         ).called(1);
       });
+
+      test(
+        'login forwards explicit clientId to FusionAuthClient and persists it',
+        () async {
+          const overrideClientId = 'second-app-id';
+          final loginResponse = LoginResponse(
+            accessToken: 'access',
+            idToken: 'id_token',
+            refreshToken: 'refresh',
+            lastLoginCredentials: 'last',
+            user: {'id': 'user123'},
+          );
+          when(
+            mockFusionAuthClient.login(
+              username: anyNamed('username'),
+              password: anyNamed('password'),
+              scope: anyNamed('scope'),
+              lastLoginCredentials: anyNamed('lastLoginCredentials'),
+              device: anyNamed('device'),
+              clientId: anyNamed('clientId'),
+            ),
+          ).thenAnswer((_) async => loginResponse);
+          when(mockJwtDecoder.decode('access')).thenReturn({
+            'sub': 'user123',
+            'exp': (DateTime.now().millisecondsSinceEpoch ~/ 1000) + 3600,
+          });
+          when(
+            mockSecureStorage.write(
+              key: anyNamed('key'),
+              value: anyNamed('value'),
+            ),
+          ).thenAnswer((_) async => {});
+          when(
+            mockSecureStorage.delete(key: anyNamed('key')),
+          ).thenAnswer((_) async => {});
+
+          final result = await authService.login(
+            'user',
+            'pass',
+            clientId: overrideClientId,
+          );
+          async.elapse(const Duration(hours: 1));
+
+          expect(result, isTrue);
+          verify(
+            mockFusionAuthClient.login(
+              username: 'user',
+              password: 'pass',
+              scope: 'openid email offline_access',
+              lastLoginCredentials: null,
+              clientId: overrideClientId,
+            ),
+          ).called(1);
+          verify(
+            mockSecureStorage.write(
+              key: 'clientId',
+              value: overrideClientId,
+            ),
+          ).called(1);
+        },
+      );
+
+      test(
+        'signUp forwards explicit clientId in register body and to login',
+        () async {
+          const overrideClientId = 'second-app-id';
+          when(
+            mockHttpClient.post(
+              any,
+              headers: anyNamed('headers'),
+              body: anyNamed('body'),
+            ),
+          ).thenAnswer((_) async => http.Response('', 200));
+          final loginResponse = LoginResponse(
+            accessToken: 'access',
+            refreshToken: 'refresh',
+            lastLoginCredentials: 'last',
+            user: {'id': 'user123'},
+          );
+          when(
+            mockFusionAuthClient.login(
+              username: anyNamed('username'),
+              password: anyNamed('password'),
+              scope: anyNamed('scope'),
+              lastLoginCredentials: anyNamed('lastLoginCredentials'),
+              device: anyNamed('device'),
+              clientId: anyNamed('clientId'),
+            ),
+          ).thenAnswer((_) async => loginResponse);
+          when(mockJwtDecoder.decode('access')).thenReturn({
+            'sub': 'user123',
+            'exp': (DateTime.now().millisecondsSinceEpoch ~/ 1000) + 3600,
+          });
+          when(
+            mockSecureStorage.write(
+              key: anyNamed('key'),
+              value: anyNamed('value'),
+            ),
+          ).thenAnswer((_) async => {});
+          when(
+            mockSecureStorage.delete(key: anyNamed('key')),
+          ).thenAnswer((_) async => {});
+
+          final result = await authService.signUp(
+            'newuser',
+            'newpass',
+            clientId: overrideClientId,
+          );
+          async.elapse(const Duration(hours: 1));
+
+          expect(result, isTrue);
+          verify(
+            mockHttpClient.post(
+              Uri.parse('https://signup.example.com/login/register'),
+              headers: {'content-type': 'application/json'},
+              body: '{"email":"newuser","password":"newpass","clientID":"second-app-id"}',
+            ),
+          ).called(1);
+          verify(
+            mockFusionAuthClient.login(
+              username: 'newuser',
+              password: 'newpass',
+              scope: 'openid email offline_access',
+              lastLoginCredentials: null,
+              clientId: overrideClientId,
+            ),
+          ).called(1);
+        },
+      );
+
+      test(
+        'checkLoginStatus passes persisted clientId to refreshTokenGrant',
+        () async {
+          const persistedClientId = 'second-app-id';
+          when(
+            mockSecureStorage.read(key: 'clientId'),
+          ).thenAnswer((_) async => persistedClientId);
+          when(
+            mockSecureStorage.read(key: 'accessToken'),
+          ).thenAnswer((_) async => 'expired_access_token');
+          when(
+            mockSecureStorage.read(key: 'refreshToken'),
+          ).thenAnswer((_) async => null);
+          when(
+            mockSecureStorage.read(key: 'lastLoginCredentials'),
+          ).thenAnswer((_) async => 'last_creds');
+          when(
+            mockSecureStorage.read(key: 'userID'),
+          ).thenAnswer((_) async => 'user123');
+          when(
+            mockSecureStorage.read(key: 'deviceID'),
+          ).thenAnswer((_) async => 'device-id');
+          when(
+            mockJwtDecoder.isExpired('expired_access_token'),
+          ).thenReturn(true);
+          final newTokens = TokenResponse(
+            accessToken: 'new_access',
+            expiresIn: 3600,
+            tokenType: 'Bearer',
+            userID: 'user123',
+          );
+          when(
+            mockFusionAuthClient.refreshTokenGrant(
+              'last_creds',
+              clientId: persistedClientId,
+            ),
+          ).thenAnswer((_) async => newTokens);
+          when(mockJwtDecoder.decode('new_access')).thenReturn({
+            'sub': 'user123',
+            'exp': (DateTime.now().millisecondsSinceEpoch ~/ 1000) + 3600,
+          });
+          when(
+            mockSecureStorage.write(
+              key: anyNamed('key'),
+              value: anyNamed('value'),
+            ),
+          ).thenAnswer((_) async => {});
+
+          await authService.init();
+          final result = await authService.checkLoginStatus();
+          async.elapse(const Duration(hours: 1));
+
+          expect(result, isTrue);
+          verify(
+            mockFusionAuthClient.refreshTokenGrant(
+              'last_creds',
+              clientId: persistedClientId,
+            ),
+          ).called(1);
+        },
+      );
 
       test('signUp throws if http client post fails', () async {
         when(
@@ -431,6 +631,7 @@ void main() {
         verify(mockSecureStorage.delete(key: 'refreshToken')).called(1);
         verify(mockSecureStorage.delete(key: 'userID')).called(1);
         verify(mockSecureStorage.delete(key: 'lastLoginCredentials')).called(1);
+        verify(mockSecureStorage.delete(key: 'clientId')).called(1);
       });
 
       group('checkLoginStatus', () {

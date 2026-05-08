@@ -32,6 +32,7 @@ class AuthService {
   static const String _refreshTokenKey = 'refreshToken';
   static const String _userIDKey = 'userID';
   static const String _lastLoginCredentialsKey = 'lastLoginCredentials';
+  static const String _clientIdKey = 'clientId';
 
   final log = Logger(
     printer: PrefixPrinter(
@@ -50,6 +51,7 @@ class AuthService {
   String? _currentRefreshToken;
   String? _currentDeviceID;
   dynamic _currentLastLoginCredentials;
+  String? _currentClientId;
 
   final StreamController<bool> _authRedirectController =
       StreamController<bool>.broadcast();
@@ -120,6 +122,7 @@ class AuthService {
         // Not JSON, keep as string
       }
     }
+    _currentClientId = await _secureStorage.read(key: _clientIdKey);
   }
 
   void dispose() {
@@ -151,15 +154,20 @@ class AuthService {
     }
   }
 
-  Future<bool> login(String username, String password) async {
+  Future<bool> login(
+    String username,
+    String password, {
+    String? clientId,
+  }) async {
     try {
       final response = await _fusionAuthClient.login(
         username: username,
         password: password,
         scope: 'openid email offline_access',
         lastLoginCredentials: _currentLastLoginCredentials,
+        clientId: clientId,
       );
-      await _storeLoginResponse(response);
+      await _storeLoginResponse(response, clientId: clientId);
 
       return true;
     } catch (e, stackTrace) {
@@ -180,18 +188,30 @@ class AuthService {
     }
   }
 
-  Future<bool> signUp(String username, String password) async {
+  Future<bool> signUp(
+    String username,
+    String password, {
+    String? clientId,
+  }) async {
     try {
       final response = await _httpClient.post(
         Uri.parse('${_config.signupOrigin}/login/register'),
         headers: {'content-type': 'application/json'},
-        body: json.encode({'email': username, 'password': password}),
+        body: json.encode({
+          'email': username,
+          'password': password,
+          if (clientId != null) 'clientID': clientId,
+        }),
       );
 
       if (response.statusCode == 200) {
         // After successful signup, attempt to log in to get tokens
         try {
-          final bool loginSuccess = await login(username, password);
+          final bool loginSuccess = await login(
+            username,
+            password,
+            clientId: clientId,
+          );
           return loginSuccess;
         } catch (loginError) {
           String? message;
@@ -309,18 +329,24 @@ class AuthService {
     await _secureStorage.delete(key: _refreshTokenKey);
     await _secureStorage.delete(key: _userIDKey);
     await _secureStorage.delete(key: _lastLoginCredentialsKey);
+    await _secureStorage.delete(key: _clientIdKey);
     _currentAccessToken = null;
     _currentIdToken = null;
     _currentRefreshToken = null;
     _currentLastLoginCredentials = null;
+    _currentClientId = null;
     _refreshTokenTimer?.cancel();
   }
 
-  Future<void> _storeLoginResponse(LoginResponse response) async {
+  Future<void> _storeLoginResponse(
+    LoginResponse response, {
+    String? clientId,
+  }) async {
     _currentAccessToken = response.accessToken;
     _currentIdToken = response.idToken;
     _currentRefreshToken = response.refreshToken;
     _currentLastLoginCredentials = response.lastLoginCredentials;
+    _currentClientId = clientId;
 
     await _secureStorage.write(
       key: _accessTokenKey,
@@ -343,6 +369,11 @@ class AuthService {
           ? response.lastLoginCredentials
           : json.encode(response.lastLoginCredentials);
       await _secureStorage.write(key: _lastLoginCredentialsKey, value: value);
+    }
+    if (clientId != null) {
+      await _secureStorage.write(key: _clientIdKey, value: clientId);
+    } else {
+      await _secureStorage.delete(key: _clientIdKey);
     }
 
     // Extract userID from decoded token or user object
@@ -440,6 +471,7 @@ class AuthService {
       } else if (_currentLastLoginCredentials != null) {
         newTokens = await _fusionAuthClient.refreshTokenGrant(
           _currentLastLoginCredentials!,
+          clientId: _currentClientId,
         );
       } else {
         log.w('No refresh credentials available for proactive refresh.');
@@ -486,6 +518,7 @@ class AuthService {
       try {
         final newTokens = await _fusionAuthClient.refreshTokenGrant(
           _currentLastLoginCredentials!,
+          clientId: _currentClientId,
         );
         await _storeTokens(newTokens);
         return true;

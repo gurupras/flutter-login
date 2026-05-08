@@ -41,11 +41,12 @@ class FusionAuthClient {
     String? scope,
     Map<String, dynamic> device = const {},
     dynamic lastLoginCredentials,
+    String? clientId,
   }) async {
     final body = {
       'username': username,
       'password': password,
-      'clientID': clientID,
+      'clientID': clientId ?? clientID,
       if (scope != null) 'scope': scope,
       'device': device,
       if (lastLoginCredentials != null)
@@ -109,10 +110,13 @@ class FusionAuthClient {
     }
   }
 
-  Future<TokenResponse> refreshTokenGrant(dynamic lastLoginCredentials) async {
+  Future<TokenResponse> refreshTokenGrant(
+    dynamic lastLoginCredentials, {
+    String? clientId,
+  }) async {
     final body = {
       'lastLoginCredentials': _getCredentialsString(lastLoginCredentials),
-      'clientID': clientID,
+      'clientID': clientId ?? clientID,
       'includeRefreshToken': true,
     };
 
