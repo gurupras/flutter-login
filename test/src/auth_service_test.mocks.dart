@@ -636,7 +636,6 @@ class MockFusionAuthClient extends _i1.Mock implements _i12.FusionAuthClient {
     String? scope,
     Map<String, dynamic>? device = const {},
     dynamic lastLoginCredentials,
-    String? clientId,
   }) =>
       (super.noSuchMethod(
             Invocation.method(#login, [], {
@@ -645,7 +644,6 @@ class MockFusionAuthClient extends _i1.Mock implements _i12.FusionAuthClient {
               #scope: scope,
               #device: device,
               #lastLoginCredentials: lastLoginCredentials,
-              #clientId: clientId,
             }),
             returnValue: _i7.Future<_i4.LoginResponse>.value(
               _FakeLoginResponse_8(
@@ -656,7 +654,6 @@ class MockFusionAuthClient extends _i1.Mock implements _i12.FusionAuthClient {
                   #scope: scope,
                   #device: device,
                   #lastLoginCredentials: lastLoginCredentials,
-                  #clientId: clientId,
                 }),
               ),
             ),
@@ -700,23 +697,14 @@ class MockFusionAuthClient extends _i1.Mock implements _i12.FusionAuthClient {
 
   @override
   _i7.Future<_i4.TokenResponse> refreshTokenGrant(
-    dynamic lastLoginCredentials, {
-    String? clientId,
-  }) =>
+    dynamic lastLoginCredentials,
+  ) =>
       (super.noSuchMethod(
-            Invocation.method(
-              #refreshTokenGrant,
-              [lastLoginCredentials],
-              {#clientId: clientId},
-            ),
+            Invocation.method(#refreshTokenGrant, [lastLoginCredentials]),
             returnValue: _i7.Future<_i4.TokenResponse>.value(
               _FakeTokenResponse_9(
                 this,
-                Invocation.method(
-                  #refreshTokenGrant,
-                  [lastLoginCredentials],
-                  {#clientId: clientId},
-                ),
+                Invocation.method(#refreshTokenGrant, [lastLoginCredentials]),
               ),
             ),
           )
