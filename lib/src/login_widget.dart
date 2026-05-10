@@ -4,7 +4,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_login/flutter_login.dart';
 import 'package:flutter_vector_icons/flutter_vector_icons.dart';
 import 'package:liblogin/src/auth_bloc/auth_bloc.dart';
-import 'package:liblogin/src/auth_service.dart';
 
 class LoginPage extends StatelessWidget {
   final String title;
@@ -56,17 +55,33 @@ class LoginPage extends StatelessWidget {
 
   List<LoginProvider> _resolveProviders(BuildContext context) {
     if (socialProviders != null) return socialProviders!;
-    return [
+    // AuthBloc is the canonical provider downstream consumers register, and
+    // it holds an [AuthService] reference. Route through it so we don't
+    // assume an independent Provider<AuthService> exists in the widget tree.
+    final authService = context.read<AuthBloc>().authService;
+    final providers = <LoginProvider>[
       LoginProvider(
         icon: FontAwesome.google,
         label: 'Google',
         callback: () async {
-          final authService = context.read<AuthService>();
           await authService.initiateGoogleLogin();
           return null;
         },
       ),
     ];
+    if (authService.config.appleIdentityProviderID != null) {
+      providers.add(
+        LoginProvider(
+          button: Buttons.apple,
+          label: 'Apple',
+          callback: () async {
+            await authService.initiateAppleLogin();
+            return null;
+          },
+        ),
+      );
+    }
+    return providers;
   }
 
   @override

@@ -3,9 +3,10 @@
 // Do not manually edit this file.
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
-import 'dart:async' as _i4;
+import 'dart:async' as _i5;
 
-import 'package:liblogin/src/auth_service.dart' as _i3;
+import 'package:liblogin/src/auth_service.dart' as _i4;
+import 'package:liblogin/src/login_config.dart' as _i3;
 import 'package:logger/logger.dart' as _i2;
 import 'package:mockito/mockito.dart' as _i1;
 
@@ -29,10 +30,15 @@ class _FakeLogger_0 extends _i1.SmartFake implements _i2.Logger {
     : super(parent, parentInvocation);
 }
 
+class _FakeLoginConfig_1 extends _i1.SmartFake implements _i3.LoginConfig {
+  _FakeLoginConfig_1(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
 /// A class which mocks [AuthService].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockAuthService extends _i1.Mock implements _i3.AuthService {
+class MockAuthService extends _i1.Mock implements _i4.AuthService {
   MockAuthService() {
     _i1.throwOnMissingStub(this);
   }
@@ -46,12 +52,20 @@ class MockAuthService extends _i1.Mock implements _i3.AuthService {
           as _i2.Logger);
 
   @override
-  _i4.Stream<bool> get authRedirectStream =>
+  _i5.Stream<bool> get authRedirectStream =>
       (super.noSuchMethod(
             Invocation.getter(#authRedirectStream),
-            returnValue: _i4.Stream<bool>.empty(),
+            returnValue: _i5.Stream<bool>.empty(),
           )
-          as _i4.Stream<bool>);
+          as _i5.Stream<bool>);
+
+  @override
+  _i3.LoginConfig get config =>
+      (super.noSuchMethod(
+            Invocation.getter(#config),
+            returnValue: _FakeLoginConfig_1(this, Invocation.getter(#config)),
+          )
+          as _i3.LoginConfig);
 
   @override
   set codeVerifier(String? value) => super.noSuchMethod(
@@ -60,13 +74,13 @@ class MockAuthService extends _i1.Mock implements _i3.AuthService {
   );
 
   @override
-  _i4.Future<void> init() =>
+  _i5.Future<void> init() =>
       (super.noSuchMethod(
             Invocation.method(#init, []),
-            returnValue: _i4.Future<void>.value(),
-            returnValueForMissingStub: _i4.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i4.Future<void>);
+          as _i5.Future<void>);
 
   @override
   void dispose() => super.noSuchMethod(
@@ -75,51 +89,59 @@ class MockAuthService extends _i1.Mock implements _i3.AuthService {
   );
 
   @override
-  _i4.Future<bool> login(String? username, String? password) =>
+  _i5.Future<bool> login(String? username, String? password) =>
       (super.noSuchMethod(
             Invocation.method(#login, [username, password]),
-            returnValue: _i4.Future<bool>.value(false),
+            returnValue: _i5.Future<bool>.value(false),
           )
-          as _i4.Future<bool>);
+          as _i5.Future<bool>);
 
   @override
-  _i4.Future<bool> signUp(String? username, String? password) =>
+  _i5.Future<bool> signUp(String? username, String? password) =>
       (super.noSuchMethod(
             Invocation.method(#signUp, [username, password]),
-            returnValue: _i4.Future<bool>.value(false),
+            returnValue: _i5.Future<bool>.value(false),
           )
-          as _i4.Future<bool>);
+          as _i5.Future<bool>);
 
   @override
-  _i4.Future<bool> initiateGoogleLogin() =>
+  _i5.Future<bool> initiateGoogleLogin() =>
       (super.noSuchMethod(
             Invocation.method(#initiateGoogleLogin, []),
-            returnValue: _i4.Future<bool>.value(false),
+            returnValue: _i5.Future<bool>.value(false),
           )
-          as _i4.Future<bool>);
+          as _i5.Future<bool>);
 
   @override
-  _i4.Future<bool> recoverPassword(String? email) =>
+  _i5.Future<bool> initiateAppleLogin() =>
+      (super.noSuchMethod(
+            Invocation.method(#initiateAppleLogin, []),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<bool> recoverPassword(String? email) =>
       (super.noSuchMethod(
             Invocation.method(#recoverPassword, [email]),
-            returnValue: _i4.Future<bool>.value(false),
+            returnValue: _i5.Future<bool>.value(false),
           )
-          as _i4.Future<bool>);
+          as _i5.Future<bool>);
 
   @override
-  _i4.Future<void> logout() =>
+  _i5.Future<void> logout() =>
       (super.noSuchMethod(
             Invocation.method(#logout, []),
-            returnValue: _i4.Future<void>.value(),
-            returnValueForMissingStub: _i4.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i4.Future<void>);
+          as _i5.Future<void>);
 
   @override
-  _i4.Future<bool> checkLoginStatus() =>
+  _i5.Future<bool> checkLoginStatus() =>
       (super.noSuchMethod(
             Invocation.method(#checkLoginStatus, []),
-            returnValue: _i4.Future<bool>.value(false),
+            returnValue: _i5.Future<bool>.value(false),
           )
-          as _i4.Future<bool>);
+          as _i5.Future<bool>);
 }

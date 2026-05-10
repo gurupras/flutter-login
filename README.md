@@ -5,7 +5,7 @@ A comprehensive Flutter authentication library supporting FusionAuth, OAuth2, an
 ## Features
 
 - **FusionAuth Integration**: Seamless connection with FusionAuth for user management.
-- **Social Login**: Support for Google Login via OAuth2.
+- **Social Login**: Support for Google and Apple Sign-In via FusionAuth IdPs over OAuth2.
 - **Secure Storage**: Automatic token management and secure storage using `flutter_secure_storage`.
 - **Auto-Refresh**: Proactive background token refresh 15 minutes before expiry, using the standard OAuth2 refresh token grant. Works for all auth methods including Google OAuth.
 - **Bloc-based Architecture**: Easy integration into Flutter apps using the BLoC pattern.
@@ -79,6 +79,8 @@ final config = LoginConfig(
   loginClientID: 'your-client-id',
   loginRedirectURI: 'your.package.name://login-callback',
   googleIdentityProviderID: 'google-idp-id',
+  // Optional — provide to enable the built-in Apple button.
+  appleIdentityProviderID: 'apple-idp-id',
 );
 
 final authService = AuthService(config: config);
@@ -113,8 +115,42 @@ The library provides a pre-built `LoginPage` that integrates with `AuthBloc`:
 LoginPage(title: 'My App Login')
 ```
 
-By default this renders the email/password form plus a single Google social
-button (using the `googleIdentityProviderID` from your `LoginConfig`).
+By default this renders the email/password form plus a Google social button
+(using the `googleIdentityProviderID` from your `LoginConfig`). If
+`appleIdentityProviderID` is also set, an Apple button is rendered alongside it
+using the official Apple-branded button style from `sign_in_button`.
+
+#### Sign in with Apple
+
+To enable the built-in Apple button:
+
+1. **Configure FusionAuth.** Create an Apple Identity Provider in FusionAuth,
+   upload the `.p8` key from your Apple Developer account, and register both
+   your iOS app's bundle ID and your Services ID under "Configured
+   applications". Note the IdP's UUID.
+2. **Set `appleIdentityProviderID`** in your `LoginConfig` to that UUID.
+3. **Re-use the existing redirect plumbing.** The Apple flow uses the same
+   `loginRedirectURI` deep link as Google — no additional `AndroidManifest.xml`
+   or `Info.plist` entries are required beyond what Google login already
+   needs.
+
+That's it. Tapping the Apple button calls
+`AuthService.initiateAppleLogin()`, which forwards the configured Apple IdP
+UUID as `idp_hint` to FusionAuth's `/oauth2/authorize` endpoint. FusionAuth
+delegates to Apple, then redirects back to your app with an authorization code
+that liblogin exchanges for tokens automatically.
+
+If `appleIdentityProviderID` is null, the default providers list silently
+omits the Apple button — there is no behavioural change for existing
+consumers.
+
+> **iOS App Store note.** Apple's App Store Review Guideline 4.8 requires
+> apps that offer third-party social login to also offer Sign in with Apple
+> using the **native** system sheet (not a Safari redirect). The redirect
+> flow above works on every platform and is sufficient for Android, web, and
+> non–App Store iOS distributions. For App Store submissions you may need
+> to add a native iOS path on top of this redirect flow — file a follow-up
+> if review requires it.
 
 #### Configuring social providers
 
@@ -135,7 +171,14 @@ LoginPage(
         return null;
       },
     ),
-    // future: Apple, GitHub, etc.
+    LoginProvider(
+      button: Buttons.apple,
+      label: 'Continue with Apple',
+      callback: () async {
+        await context.read<AuthService>().initiateAppleLogin();
+        return null;
+      },
+    ),
   ],
 )
 ```

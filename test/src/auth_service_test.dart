@@ -888,12 +888,18 @@ void main() {
               value: anyNamed('value'),
             ),
           ).called(1);
-          verify(
+          final captured = verify(
             mockLibloginNative.login(
-              authUri: anyNamed('authUri'),
+              authUri: captureAnyNamed('authUri'),
               redirectUri: config.loginRedirectURI,
             ),
-          ).called(1);
+          ).captured;
+          expect(captured, hasLength(1));
+          final Uri authUri = captured.single as Uri;
+          expect(
+            authUri.queryParameters['idp_hint'],
+            config.googleIdentityProviderID,
+          );
         });
 
         test('returns false if LibloginNative fails to launch', () async {
@@ -926,6 +932,101 @@ void main() {
               redirectUri: config.loginRedirectURI,
             ),
           ).called(1);
+        });
+      });
+
+      group('initiateAppleLogin', () {
+        late LoginConfig appleConfig;
+        late AuthService appleAuthService;
+
+        setUp(() {
+          appleConfig = LoginConfig(
+            loginDomain: 'example.com',
+            signupOrigin: 'https://signup.example.com',
+            loginTenantID: 'some-tenant-id',
+            loginClientID: 'some-client-id',
+            loginRedirectURI: 'https://example.com/callback',
+            googleIdentityProviderID: 'google-idp',
+            appleIdentityProviderID: 'apple-idp',
+          );
+          appleAuthService = AuthService(
+            config: appleConfig,
+            secureStorage: mockSecureStorage,
+            httpClient: mockHttpClient,
+            jwtDecoder: mockJwtDecoder,
+            fusionAuthClient: mockFusionAuthClient,
+            libloginNative: mockLibloginNative,
+          );
+        });
+
+        test(
+          'forwards appleIdentityProviderID as idp_hint and returns true on launch',
+          () async {
+            when(
+              mockSecureStorage.write(
+                key: 'code_verifier',
+                value: anyNamed('value'),
+              ),
+            ).thenAnswer((_) async => {});
+            when(
+              mockLibloginNative.login(
+                authUri: anyNamed('authUri'),
+                redirectUri: anyNamed('redirectUri'),
+              ),
+            ).thenAnswer((_) async => true);
+
+            final result = await appleAuthService.initiateAppleLogin();
+            async.elapse(Duration.zero);
+
+            expect(result, isTrue);
+            final captured = verify(
+              mockLibloginNative.login(
+                authUri: captureAnyNamed('authUri'),
+                redirectUri: appleConfig.loginRedirectURI,
+              ),
+            ).captured;
+            expect(captured, hasLength(1));
+            final Uri authUri = captured.single as Uri;
+            expect(authUri.queryParameters['idp_hint'], 'apple-idp');
+            expect(
+              authUri.queryParameters['client_id'],
+              appleConfig.loginClientID,
+            );
+            expect(
+              authUri.queryParameters['response_type'],
+              'code',
+            );
+          },
+        );
+
+        test(
+          'throws StateError when appleIdentityProviderID is not configured',
+          () {
+            expect(
+              () => authService.initiateAppleLogin(),
+              throwsA(isA<StateError>()),
+            );
+          },
+        );
+
+        test('returns false if LibloginNative fails to launch', () async {
+          when(
+            mockSecureStorage.write(
+              key: 'code_verifier',
+              value: anyNamed('value'),
+            ),
+          ).thenAnswer((_) async => {});
+          when(
+            mockLibloginNative.login(
+              authUri: anyNamed('authUri'),
+              redirectUri: anyNamed('redirectUri'),
+            ),
+          ).thenAnswer((_) async => false);
+
+          final result = await appleAuthService.initiateAppleLogin();
+          async.elapse(Duration.zero);
+
+          expect(result, isFalse);
         });
       });
 

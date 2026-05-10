@@ -59,6 +59,11 @@ class AuthService {
   String? get currentIdToken => _currentIdToken;
   dynamic get lastLoginCredentials => _currentLastLoginCredentials;
 
+  /// Read-only access to the [LoginConfig] used to construct this service.
+  /// Useful for widgets that need to introspect optional provider IDs without
+  /// duplicating config plumbing.
+  LoginConfig get config => _config;
+
   DecodedAccessToken? get decodedAccessToken {
     if (_currentAccessToken == null) {
       return null;
@@ -233,7 +238,38 @@ class AuthService {
 
   String? codeVerifier;
 
-  Future<bool> initiateGoogleLogin() async {
+  Future<bool> initiateGoogleLogin() {
+    return _initiateSocialLogin(
+      idpHint: _config.googleIdentityProviderID,
+      providerLabel: 'Google',
+    );
+  }
+
+  /// Initiates Sign in with Apple via the FusionAuth Apple IdP.
+  ///
+  /// Uses the same OAuth2 + PKCE redirect flow as Google: the user is sent
+  /// to FusionAuth, which delegates to Apple, then redirects back to the
+  /// configured [LoginConfig.loginRedirectURI].
+  ///
+  /// Throws a [StateError] if [LoginConfig.appleIdentityProviderID] is not set.
+  Future<bool> initiateAppleLogin() {
+    final appleIdpID = _config.appleIdentityProviderID;
+    if (appleIdpID == null) {
+      throw StateError(
+        'appleIdentityProviderID is not configured on LoginConfig. '
+        'Set it before calling initiateAppleLogin().',
+      );
+    }
+    return _initiateSocialLogin(
+      idpHint: appleIdpID,
+      providerLabel: 'Apple',
+    );
+  }
+
+  Future<bool> _initiateSocialLogin({
+    required String idpHint,
+    required String providerLabel,
+  }) async {
     try {
       codeVerifier = AuthService.generateCodeVerifier();
       final codeChallenge = AuthService.generateCodeChallenge(codeVerifier!);
@@ -252,7 +288,7 @@ class AuthService {
           'code_challenge': codeChallenge,
           'code_challenge_method': 'S256',
           'tenantId': _config.loginTenantID,
-          'idp_hint': _config.googleIdentityProviderID,
+          'idp_hint': idpHint,
         },
       );
 
@@ -267,7 +303,7 @@ class AuthService {
       }
       return launched;
     } catch (e) {
-      log.e('Failed to initiate Google login: $e');
+      log.e('Failed to initiate $providerLabel login: $e');
       return false;
     }
   }

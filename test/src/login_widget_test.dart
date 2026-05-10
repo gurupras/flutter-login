@@ -11,11 +11,30 @@ void main() {
   late MockAuthService mockAuthService;
   late AuthBloc authBloc;
 
-  setUp(() {
-    mockAuthService = MockAuthService();
+  LoginConfig buildConfig({String? appleIdentityProviderID}) {
+    return LoginConfig(
+      loginDomain: 'example.com',
+      signupOrigin: 'https://signup.example.com',
+      loginTenantID: 'tenant',
+      loginClientID: 'client',
+      loginRedirectURI: 'app://callback',
+      googleIdentityProviderID: 'google-idp',
+      appleIdentityProviderID: appleIdentityProviderID,
+    );
+  }
+
+  void stubAuthService({String? appleIdentityProviderID}) {
     when(
       mockAuthService.authRedirectStream,
     ).thenAnswer((_) => const Stream.empty());
+    when(mockAuthService.config).thenReturn(
+      buildConfig(appleIdentityProviderID: appleIdentityProviderID),
+    );
+  }
+
+  setUp(() {
+    mockAuthService = MockAuthService();
+    stubAuthService();
     authBloc = AuthBloc(authService: mockAuthService);
   });
 
@@ -51,6 +70,37 @@ void main() {
       expect(flutterLogin.hideUserNamePasswordLogin, isFalse);
       expect(flutterLogin.loginProviders.length, 1);
       expect(flutterLogin.loginProviders.first.label, 'Google');
+    },
+  );
+
+  testWidgets(
+    'appends an Apple provider when appleIdentityProviderID is configured',
+    (tester) async {
+      stubAuthService(appleIdentityProviderID: 'apple-idp');
+      final flutterLogin = await capture(
+        tester,
+        const LoginPage(title: 'Test App'),
+      );
+      expect(
+        flutterLogin.loginProviders.map((p) => p.label),
+        ['Google', 'Apple'],
+      );
+      expect(flutterLogin.loginProviders.last.button, Buttons.apple);
+    },
+  );
+
+  testWidgets(
+    'omits the Apple provider when appleIdentityProviderID is null',
+    (tester) async {
+      // Default stub from setUp already leaves appleIdentityProviderID null.
+      final flutterLogin = await capture(
+        tester,
+        const LoginPage(title: 'Test App'),
+      );
+      expect(
+        flutterLogin.loginProviders.any((p) => p.label == 'Apple'),
+        isFalse,
+      );
     },
   );
 
