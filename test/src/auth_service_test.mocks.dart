@@ -3,20 +3,21 @@
 // Do not manually edit this file.
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
-import 'dart:async' as _i7;
-import 'dart:convert' as _i8;
-import 'dart:typed_data' as _i10;
+import 'dart:async' as _i8;
+import 'dart:convert' as _i9;
+import 'dart:typed_data' as _i11;
 
-import 'package:flutter/foundation.dart' as _i6;
+import 'package:flutter/foundation.dart' as _i7;
 import 'package:flutter/services.dart' as _i5;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart' as _i2;
 import 'package:http/http.dart' as _i3;
 import 'package:liblogin/src/auth_models.dart' as _i4;
-import 'package:liblogin/src/auth_service.dart' as _i11;
-import 'package:liblogin/src/fusionauth_client.dart' as _i12;
-import 'package:liblogin_native/liblogin_native.dart' as _i13;
+import 'package:liblogin/src/auth_service.dart' as _i12;
+import 'package:liblogin/src/fusionauth_client.dart' as _i13;
+import 'package:liblogin_native/liblogin_native.dart' as _i14;
 import 'package:mockito/mockito.dart' as _i1;
-import 'package:mockito/src/dummies.dart' as _i9;
+import 'package:mockito/src/dummies.dart' as _i10;
+import 'package:sign_in_with_apple/sign_in_with_apple.dart' as _i6;
 
 // ignore_for_file: type=lint
 // ignore_for_file: avoid_redundant_argument_values
@@ -97,6 +98,14 @@ class _FakeBinaryMessenger_11 extends _i1.SmartFake
     : super(parent, parentInvocation);
 }
 
+class _FakeAuthorizationCredentialAppleID_12 extends _i1.SmartFake
+    implements _i6.AuthorizationCredentialAppleID {
+  _FakeAuthorizationCredentialAppleID_12(
+    Object parent,
+    Invocation parentInvocation,
+  ) : super(parent, parentInvocation);
+}
+
 /// A class which mocks [FlutterSecureStorage].
 ///
 /// See the documentation for Mockito's code generation for more information.
@@ -172,7 +181,7 @@ class MockFlutterSecureStorage extends _i1.Mock
   @override
   void registerListener({
     required String? key,
-    required _i6.ValueChanged<String?>? listener,
+    required _i7.ValueChanged<String?>? listener,
   }) => super.noSuchMethod(
     Invocation.method(#registerListener, [], {#key: key, #listener: listener}),
     returnValueForMissingStub: null,
@@ -181,7 +190,7 @@ class MockFlutterSecureStorage extends _i1.Mock
   @override
   void unregisterListener({
     required String? key,
-    required _i6.ValueChanged<String?>? listener,
+    required _i7.ValueChanged<String?>? listener,
   }) => super.noSuchMethod(
     Invocation.method(#unregisterListener, [], {
       #key: key,
@@ -204,7 +213,7 @@ class MockFlutterSecureStorage extends _i1.Mock
   );
 
   @override
-  _i7.Future<void> write({
+  _i8.Future<void> write({
     required String? key,
     required String? value,
     _i2.IOSOptions? iOptions,
@@ -225,13 +234,13 @@ class MockFlutterSecureStorage extends _i1.Mock
               #mOptions: mOptions,
               #wOptions: wOptions,
             }),
-            returnValue: _i7.Future<void>.value(),
-            returnValueForMissingStub: _i7.Future<void>.value(),
+            returnValue: _i8.Future<void>.value(),
+            returnValueForMissingStub: _i8.Future<void>.value(),
           )
-          as _i7.Future<void>);
+          as _i8.Future<void>);
 
   @override
-  _i7.Future<String?> read({
+  _i8.Future<String?> read({
     required String? key,
     _i2.IOSOptions? iOptions,
     _i2.AndroidOptions? aOptions,
@@ -250,12 +259,12 @@ class MockFlutterSecureStorage extends _i1.Mock
               #mOptions: mOptions,
               #wOptions: wOptions,
             }),
-            returnValue: _i7.Future<String?>.value(),
+            returnValue: _i8.Future<String?>.value(),
           )
-          as _i7.Future<String?>);
+          as _i8.Future<String?>);
 
   @override
-  _i7.Future<bool> containsKey({
+  _i8.Future<bool> containsKey({
     required String? key,
     _i2.IOSOptions? iOptions,
     _i2.AndroidOptions? aOptions,
@@ -274,12 +283,12 @@ class MockFlutterSecureStorage extends _i1.Mock
               #mOptions: mOptions,
               #wOptions: wOptions,
             }),
-            returnValue: _i7.Future<bool>.value(false),
+            returnValue: _i8.Future<bool>.value(false),
           )
-          as _i7.Future<bool>);
+          as _i8.Future<bool>);
 
   @override
-  _i7.Future<void> delete({
+  _i8.Future<void> delete({
     required String? key,
     _i2.IOSOptions? iOptions,
     _i2.AndroidOptions? aOptions,
@@ -298,13 +307,13 @@ class MockFlutterSecureStorage extends _i1.Mock
               #mOptions: mOptions,
               #wOptions: wOptions,
             }),
-            returnValue: _i7.Future<void>.value(),
-            returnValueForMissingStub: _i7.Future<void>.value(),
+            returnValue: _i8.Future<void>.value(),
+            returnValueForMissingStub: _i8.Future<void>.value(),
           )
-          as _i7.Future<void>);
+          as _i8.Future<void>);
 
   @override
-  _i7.Future<Map<String, String>> readAll({
+  _i8.Future<Map<String, String>> readAll({
     _i2.IOSOptions? iOptions,
     _i2.AndroidOptions? aOptions,
     _i2.LinuxOptions? lOptions,
@@ -321,14 +330,14 @@ class MockFlutterSecureStorage extends _i1.Mock
               #mOptions: mOptions,
               #wOptions: wOptions,
             }),
-            returnValue: _i7.Future<Map<String, String>>.value(
+            returnValue: _i8.Future<Map<String, String>>.value(
               <String, String>{},
             ),
           )
-          as _i7.Future<Map<String, String>>);
+          as _i8.Future<Map<String, String>>);
 
   @override
-  _i7.Future<void> deleteAll({
+  _i8.Future<void> deleteAll({
     _i2.IOSOptions? iOptions,
     _i2.AndroidOptions? aOptions,
     _i2.LinuxOptions? lOptions,
@@ -345,18 +354,18 @@ class MockFlutterSecureStorage extends _i1.Mock
               #mOptions: mOptions,
               #wOptions: wOptions,
             }),
-            returnValue: _i7.Future<void>.value(),
-            returnValueForMissingStub: _i7.Future<void>.value(),
+            returnValue: _i8.Future<void>.value(),
+            returnValueForMissingStub: _i8.Future<void>.value(),
           )
-          as _i7.Future<void>);
+          as _i8.Future<void>);
 
   @override
-  _i7.Future<bool?> isCupertinoProtectedDataAvailable() =>
+  _i8.Future<bool?> isCupertinoProtectedDataAvailable() =>
       (super.noSuchMethod(
             Invocation.method(#isCupertinoProtectedDataAvailable, []),
-            returnValue: _i7.Future<bool?>.value(),
+            returnValue: _i8.Future<bool?>.value(),
           )
-          as _i7.Future<bool?>);
+          as _i8.Future<bool?>);
 }
 
 /// A class which mocks [Client].
@@ -368,37 +377,37 @@ class MockClient extends _i1.Mock implements _i3.Client {
   }
 
   @override
-  _i7.Future<_i3.Response> head(Uri? url, {Map<String, String>? headers}) =>
+  _i8.Future<_i3.Response> head(Uri? url, {Map<String, String>? headers}) =>
       (super.noSuchMethod(
             Invocation.method(#head, [url], {#headers: headers}),
-            returnValue: _i7.Future<_i3.Response>.value(
+            returnValue: _i8.Future<_i3.Response>.value(
               _FakeResponse_6(
                 this,
                 Invocation.method(#head, [url], {#headers: headers}),
               ),
             ),
           )
-          as _i7.Future<_i3.Response>);
+          as _i8.Future<_i3.Response>);
 
   @override
-  _i7.Future<_i3.Response> get(Uri? url, {Map<String, String>? headers}) =>
+  _i8.Future<_i3.Response> get(Uri? url, {Map<String, String>? headers}) =>
       (super.noSuchMethod(
             Invocation.method(#get, [url], {#headers: headers}),
-            returnValue: _i7.Future<_i3.Response>.value(
+            returnValue: _i8.Future<_i3.Response>.value(
               _FakeResponse_6(
                 this,
                 Invocation.method(#get, [url], {#headers: headers}),
               ),
             ),
           )
-          as _i7.Future<_i3.Response>);
+          as _i8.Future<_i3.Response>);
 
   @override
-  _i7.Future<_i3.Response> post(
+  _i8.Future<_i3.Response> post(
     Uri? url, {
     Map<String, String>? headers,
     Object? body,
-    _i8.Encoding? encoding,
+    _i9.Encoding? encoding,
   }) =>
       (super.noSuchMethod(
             Invocation.method(
@@ -406,7 +415,7 @@ class MockClient extends _i1.Mock implements _i3.Client {
               [url],
               {#headers: headers, #body: body, #encoding: encoding},
             ),
-            returnValue: _i7.Future<_i3.Response>.value(
+            returnValue: _i8.Future<_i3.Response>.value(
               _FakeResponse_6(
                 this,
                 Invocation.method(
@@ -417,14 +426,14 @@ class MockClient extends _i1.Mock implements _i3.Client {
               ),
             ),
           )
-          as _i7.Future<_i3.Response>);
+          as _i8.Future<_i3.Response>);
 
   @override
-  _i7.Future<_i3.Response> put(
+  _i8.Future<_i3.Response> put(
     Uri? url, {
     Map<String, String>? headers,
     Object? body,
-    _i8.Encoding? encoding,
+    _i9.Encoding? encoding,
   }) =>
       (super.noSuchMethod(
             Invocation.method(
@@ -432,7 +441,7 @@ class MockClient extends _i1.Mock implements _i3.Client {
               [url],
               {#headers: headers, #body: body, #encoding: encoding},
             ),
-            returnValue: _i7.Future<_i3.Response>.value(
+            returnValue: _i8.Future<_i3.Response>.value(
               _FakeResponse_6(
                 this,
                 Invocation.method(
@@ -443,14 +452,14 @@ class MockClient extends _i1.Mock implements _i3.Client {
               ),
             ),
           )
-          as _i7.Future<_i3.Response>);
+          as _i8.Future<_i3.Response>);
 
   @override
-  _i7.Future<_i3.Response> patch(
+  _i8.Future<_i3.Response> patch(
     Uri? url, {
     Map<String, String>? headers,
     Object? body,
-    _i8.Encoding? encoding,
+    _i9.Encoding? encoding,
   }) =>
       (super.noSuchMethod(
             Invocation.method(
@@ -458,7 +467,7 @@ class MockClient extends _i1.Mock implements _i3.Client {
               [url],
               {#headers: headers, #body: body, #encoding: encoding},
             ),
-            returnValue: _i7.Future<_i3.Response>.value(
+            returnValue: _i8.Future<_i3.Response>.value(
               _FakeResponse_6(
                 this,
                 Invocation.method(
@@ -469,14 +478,14 @@ class MockClient extends _i1.Mock implements _i3.Client {
               ),
             ),
           )
-          as _i7.Future<_i3.Response>);
+          as _i8.Future<_i3.Response>);
 
   @override
-  _i7.Future<_i3.Response> delete(
+  _i8.Future<_i3.Response> delete(
     Uri? url, {
     Map<String, String>? headers,
     Object? body,
-    _i8.Encoding? encoding,
+    _i9.Encoding? encoding,
   }) =>
       (super.noSuchMethod(
             Invocation.method(
@@ -484,7 +493,7 @@ class MockClient extends _i1.Mock implements _i3.Client {
               [url],
               {#headers: headers, #body: body, #encoding: encoding},
             ),
-            returnValue: _i7.Future<_i3.Response>.value(
+            returnValue: _i8.Future<_i3.Response>.value(
               _FakeResponse_6(
                 this,
                 Invocation.method(
@@ -495,44 +504,44 @@ class MockClient extends _i1.Mock implements _i3.Client {
               ),
             ),
           )
-          as _i7.Future<_i3.Response>);
+          as _i8.Future<_i3.Response>);
 
   @override
-  _i7.Future<String> read(Uri? url, {Map<String, String>? headers}) =>
+  _i8.Future<String> read(Uri? url, {Map<String, String>? headers}) =>
       (super.noSuchMethod(
             Invocation.method(#read, [url], {#headers: headers}),
-            returnValue: _i7.Future<String>.value(
-              _i9.dummyValue<String>(
+            returnValue: _i8.Future<String>.value(
+              _i10.dummyValue<String>(
                 this,
                 Invocation.method(#read, [url], {#headers: headers}),
               ),
             ),
           )
-          as _i7.Future<String>);
+          as _i8.Future<String>);
 
   @override
-  _i7.Future<_i10.Uint8List> readBytes(
+  _i8.Future<_i11.Uint8List> readBytes(
     Uri? url, {
     Map<String, String>? headers,
   }) =>
       (super.noSuchMethod(
             Invocation.method(#readBytes, [url], {#headers: headers}),
-            returnValue: _i7.Future<_i10.Uint8List>.value(_i10.Uint8List(0)),
+            returnValue: _i8.Future<_i11.Uint8List>.value(_i11.Uint8List(0)),
           )
-          as _i7.Future<_i10.Uint8List>);
+          as _i8.Future<_i11.Uint8List>);
 
   @override
-  _i7.Future<_i3.StreamedResponse> send(_i3.BaseRequest? request) =>
+  _i8.Future<_i3.StreamedResponse> send(_i3.BaseRequest? request) =>
       (super.noSuchMethod(
             Invocation.method(#send, [request]),
-            returnValue: _i7.Future<_i3.StreamedResponse>.value(
+            returnValue: _i8.Future<_i3.StreamedResponse>.value(
               _FakeStreamedResponse_7(
                 this,
                 Invocation.method(#send, [request]),
               ),
             ),
           )
-          as _i7.Future<_i3.StreamedResponse>);
+          as _i8.Future<_i3.StreamedResponse>);
 
   @override
   void close() => super.noSuchMethod(
@@ -544,7 +553,7 @@ class MockClient extends _i1.Mock implements _i3.Client {
 /// A class which mocks [JwtDecoderWrapper].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockJwtDecoderWrapper extends _i1.Mock implements _i11.JwtDecoderWrapper {
+class MockJwtDecoderWrapper extends _i1.Mock implements _i12.JwtDecoderWrapper {
   MockJwtDecoderWrapper() {
     _i1.throwOnMissingStub(this);
   }
@@ -569,7 +578,7 @@ class MockJwtDecoderWrapper extends _i1.Mock implements _i11.JwtDecoderWrapper {
 /// A class which mocks [FusionAuthClient].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockFusionAuthClient extends _i1.Mock implements _i12.FusionAuthClient {
+class MockFusionAuthClient extends _i1.Mock implements _i13.FusionAuthClient {
   MockFusionAuthClient() {
     _i1.throwOnMissingStub(this);
   }
@@ -578,7 +587,7 @@ class MockFusionAuthClient extends _i1.Mock implements _i12.FusionAuthClient {
   String get domain =>
       (super.noSuchMethod(
             Invocation.getter(#domain),
-            returnValue: _i9.dummyValue<String>(
+            returnValue: _i10.dummyValue<String>(
               this,
               Invocation.getter(#domain),
             ),
@@ -589,7 +598,7 @@ class MockFusionAuthClient extends _i1.Mock implements _i12.FusionAuthClient {
   String get signupOrigin =>
       (super.noSuchMethod(
             Invocation.getter(#signupOrigin),
-            returnValue: _i9.dummyValue<String>(
+            returnValue: _i10.dummyValue<String>(
               this,
               Invocation.getter(#signupOrigin),
             ),
@@ -600,7 +609,7 @@ class MockFusionAuthClient extends _i1.Mock implements _i12.FusionAuthClient {
   String get clientID =>
       (super.noSuchMethod(
             Invocation.getter(#clientID),
-            returnValue: _i9.dummyValue<String>(
+            returnValue: _i10.dummyValue<String>(
               this,
               Invocation.getter(#clientID),
             ),
@@ -611,7 +620,7 @@ class MockFusionAuthClient extends _i1.Mock implements _i12.FusionAuthClient {
   String get tenantID =>
       (super.noSuchMethod(
             Invocation.getter(#tenantID),
-            returnValue: _i9.dummyValue<String>(
+            returnValue: _i10.dummyValue<String>(
               this,
               Invocation.getter(#tenantID),
             ),
@@ -622,7 +631,7 @@ class MockFusionAuthClient extends _i1.Mock implements _i12.FusionAuthClient {
   String get redirectUri =>
       (super.noSuchMethod(
             Invocation.getter(#redirectUri),
-            returnValue: _i9.dummyValue<String>(
+            returnValue: _i10.dummyValue<String>(
               this,
               Invocation.getter(#redirectUri),
             ),
@@ -630,7 +639,7 @@ class MockFusionAuthClient extends _i1.Mock implements _i12.FusionAuthClient {
           as String);
 
   @override
-  _i7.Future<_i4.LoginResponse> login({
+  _i8.Future<_i4.LoginResponse> login({
     required String? username,
     required String? password,
     String? scope,
@@ -645,7 +654,7 @@ class MockFusionAuthClient extends _i1.Mock implements _i12.FusionAuthClient {
               #device: device,
               #lastLoginCredentials: lastLoginCredentials,
             }),
-            returnValue: _i7.Future<_i4.LoginResponse>.value(
+            returnValue: _i8.Future<_i4.LoginResponse>.value(
               _FakeLoginResponse_8(
                 this,
                 Invocation.method(#login, [], {
@@ -658,23 +667,23 @@ class MockFusionAuthClient extends _i1.Mock implements _i12.FusionAuthClient {
               ),
             ),
           )
-          as _i7.Future<_i4.LoginResponse>);
+          as _i8.Future<_i4.LoginResponse>);
 
   @override
-  _i7.Future<_i4.TokenResponse> oauthRefreshTokenGrant(String? refreshToken) =>
+  _i8.Future<_i4.TokenResponse> oauthRefreshTokenGrant(String? refreshToken) =>
       (super.noSuchMethod(
             Invocation.method(#oauthRefreshTokenGrant, [refreshToken]),
-            returnValue: _i7.Future<_i4.TokenResponse>.value(
+            returnValue: _i8.Future<_i4.TokenResponse>.value(
               _FakeTokenResponse_9(
                 this,
                 Invocation.method(#oauthRefreshTokenGrant, [refreshToken]),
               ),
             ),
           )
-          as _i7.Future<_i4.TokenResponse>);
+          as _i8.Future<_i4.TokenResponse>);
 
   @override
-  _i7.Future<_i4.TokenResponse> resourceOwnerPasswordCredentialsGrant(
+  _i8.Future<_i4.TokenResponse> resourceOwnerPasswordCredentialsGrant(
     String? username,
     String? password,
   ) =>
@@ -683,7 +692,7 @@ class MockFusionAuthClient extends _i1.Mock implements _i12.FusionAuthClient {
               username,
               password,
             ]),
-            returnValue: _i7.Future<_i4.TokenResponse>.value(
+            returnValue: _i8.Future<_i4.TokenResponse>.value(
               _FakeTokenResponse_9(
                 this,
                 Invocation.method(#resourceOwnerPasswordCredentialsGrant, [
@@ -693,31 +702,53 @@ class MockFusionAuthClient extends _i1.Mock implements _i12.FusionAuthClient {
               ),
             ),
           )
-          as _i7.Future<_i4.TokenResponse>);
+          as _i8.Future<_i4.TokenResponse>);
 
   @override
-  _i7.Future<_i4.TokenResponse> refreshTokenGrant(
+  _i8.Future<_i4.TokenResponse> refreshTokenGrant(
     dynamic lastLoginCredentials,
   ) =>
       (super.noSuchMethod(
             Invocation.method(#refreshTokenGrant, [lastLoginCredentials]),
-            returnValue: _i7.Future<_i4.TokenResponse>.value(
+            returnValue: _i8.Future<_i4.TokenResponse>.value(
               _FakeTokenResponse_9(
                 this,
                 Invocation.method(#refreshTokenGrant, [lastLoginCredentials]),
               ),
             ),
           )
-          as _i7.Future<_i4.TokenResponse>);
+          as _i8.Future<_i4.TokenResponse>);
 
   @override
-  _i7.Future<_i4.TokenResponse> exchangeAuthorizationCode(
+  _i8.Future<_i4.TokenResponse> appleIdpLogin({
+    required String? identityToken,
+    required String? identityProviderId,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(#appleIdpLogin, [], {
+              #identityToken: identityToken,
+              #identityProviderId: identityProviderId,
+            }),
+            returnValue: _i8.Future<_i4.TokenResponse>.value(
+              _FakeTokenResponse_9(
+                this,
+                Invocation.method(#appleIdpLogin, [], {
+                  #identityToken: identityToken,
+                  #identityProviderId: identityProviderId,
+                }),
+              ),
+            ),
+          )
+          as _i8.Future<_i4.TokenResponse>);
+
+  @override
+  _i8.Future<_i4.TokenResponse> exchangeAuthorizationCode(
     String? code,
     String? codeVerifier,
   ) =>
       (super.noSuchMethod(
             Invocation.method(#exchangeAuthorizationCode, [code, codeVerifier]),
-            returnValue: _i7.Future<_i4.TokenResponse>.value(
+            returnValue: _i8.Future<_i4.TokenResponse>.value(
               _FakeTokenResponse_9(
                 this,
                 Invocation.method(#exchangeAuthorizationCode, [
@@ -727,7 +758,7 @@ class MockFusionAuthClient extends _i1.Mock implements _i12.FusionAuthClient {
               ),
             ),
           )
-          as _i7.Future<_i4.TokenResponse>);
+          as _i8.Future<_i4.TokenResponse>);
 }
 
 /// A class which mocks [MethodChannel].
@@ -742,7 +773,10 @@ class MockMethodChannel extends _i1.Mock implements _i5.MethodChannel {
   String get name =>
       (super.noSuchMethod(
             Invocation.getter(#name),
-            returnValue: _i9.dummyValue<String>(this, Invocation.getter(#name)),
+            returnValue: _i10.dummyValue<String>(
+              this,
+              Invocation.getter(#name),
+            ),
           )
           as String);
 
@@ -766,38 +800,38 @@ class MockMethodChannel extends _i1.Mock implements _i5.MethodChannel {
           as _i5.BinaryMessenger);
 
   @override
-  _i7.Future<T?> invokeMethod<T>(String? method, [dynamic arguments]) =>
+  _i8.Future<T?> invokeMethod<T>(String? method, [dynamic arguments]) =>
       (super.noSuchMethod(
             Invocation.method(#invokeMethod, [method, arguments]),
-            returnValue: _i7.Future<T?>.value(),
+            returnValue: _i8.Future<T?>.value(),
           )
-          as _i7.Future<T?>);
+          as _i8.Future<T?>);
 
   @override
-  _i7.Future<List<T>?> invokeListMethod<T>(
+  _i8.Future<List<T>?> invokeListMethod<T>(
     String? method, [
     dynamic arguments,
   ]) =>
       (super.noSuchMethod(
             Invocation.method(#invokeListMethod, [method, arguments]),
-            returnValue: _i7.Future<List<T>?>.value(),
+            returnValue: _i8.Future<List<T>?>.value(),
           )
-          as _i7.Future<List<T>?>);
+          as _i8.Future<List<T>?>);
 
   @override
-  _i7.Future<Map<K, V>?> invokeMapMethod<K, V>(
+  _i8.Future<Map<K, V>?> invokeMapMethod<K, V>(
     String? method, [
     dynamic arguments,
   ]) =>
       (super.noSuchMethod(
             Invocation.method(#invokeMapMethod, [method, arguments]),
-            returnValue: _i7.Future<Map<K, V>?>.value(),
+            returnValue: _i8.Future<Map<K, V>?>.value(),
           )
-          as _i7.Future<Map<K, V>?>);
+          as _i8.Future<Map<K, V>?>);
 
   @override
   void setMethodCallHandler(
-    _i7.Future<dynamic> Function(_i5.MethodCall)? handler,
+    _i8.Future<dynamic> Function(_i5.MethodCall)? handler,
   ) => super.noSuchMethod(
     Invocation.method(#setMethodCallHandler, [handler]),
     returnValueForMissingStub: null,
@@ -807,47 +841,47 @@ class MockMethodChannel extends _i1.Mock implements _i5.MethodChannel {
 /// A class which mocks [LibloginNative].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockLibloginNative extends _i1.Mock implements _i13.LibloginNative {
+class MockLibloginNative extends _i1.Mock implements _i14.LibloginNative {
   MockLibloginNative() {
     _i1.throwOnMissingStub(this);
   }
 
   @override
-  _i7.Future<String?> getPlatformVersion() =>
+  _i8.Future<String?> getPlatformVersion() =>
       (super.noSuchMethod(
             Invocation.method(#getPlatformVersion, []),
-            returnValue: _i7.Future<String?>.value(),
+            returnValue: _i8.Future<String?>.value(),
           )
-          as _i7.Future<String?>);
+          as _i8.Future<String?>);
 
   @override
-  _i7.Future<String?> getPlatformInfo() =>
+  _i8.Future<String?> getPlatformInfo() =>
       (super.noSuchMethod(
             Invocation.method(#getPlatformInfo, []),
-            returnValue: _i7.Future<String?>.value(),
+            returnValue: _i8.Future<String?>.value(),
           )
-          as _i7.Future<String?>);
+          as _i8.Future<String?>);
 
   @override
-  _i7.Future<void> setAuthRedirectHandler(dynamic Function(String)? handler) =>
+  _i8.Future<void> setAuthRedirectHandler(dynamic Function(String)? handler) =>
       (super.noSuchMethod(
             Invocation.method(#setAuthRedirectHandler, [handler]),
-            returnValue: _i7.Future<void>.value(),
-            returnValueForMissingStub: _i7.Future<void>.value(),
+            returnValue: _i8.Future<void>.value(),
+            returnValueForMissingStub: _i8.Future<void>.value(),
           )
-          as _i7.Future<void>);
+          as _i8.Future<void>);
 
   @override
-  _i7.Future<void> dispatchAuthRedirect(String? url) =>
+  _i8.Future<void> dispatchAuthRedirect(String? url) =>
       (super.noSuchMethod(
             Invocation.method(#dispatchAuthRedirect, [url]),
-            returnValue: _i7.Future<void>.value(),
-            returnValueForMissingStub: _i7.Future<void>.value(),
+            returnValue: _i8.Future<void>.value(),
+            returnValueForMissingStub: _i8.Future<void>.value(),
           )
-          as _i7.Future<void>);
+          as _i8.Future<void>);
 
   @override
-  _i7.Future<bool> login({
+  _i8.Future<bool> login({
     required Uri? authUri,
     required String? redirectUri,
   }) =>
@@ -856,7 +890,30 @@ class MockLibloginNative extends _i1.Mock implements _i13.LibloginNative {
               #authUri: authUri,
               #redirectUri: redirectUri,
             }),
-            returnValue: _i7.Future<bool>.value(false),
+            returnValue: _i8.Future<bool>.value(false),
           )
-          as _i7.Future<bool>);
+          as _i8.Future<bool>);
+}
+
+/// A class which mocks [AppleSignInWrapper].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockAppleSignInWrapper extends _i1.Mock
+    implements _i12.AppleSignInWrapper {
+  MockAppleSignInWrapper() {
+    _i1.throwOnMissingStub(this);
+  }
+
+  @override
+  _i8.Future<_i6.AuthorizationCredentialAppleID> getCredential() =>
+      (super.noSuchMethod(
+            Invocation.method(#getCredential, []),
+            returnValue: _i8.Future<_i6.AuthorizationCredentialAppleID>.value(
+              _FakeAuthorizationCredentialAppleID_12(
+                this,
+                Invocation.method(#getCredential, []),
+              ),
+            ),
+          )
+          as _i8.Future<_i6.AuthorizationCredentialAppleID>);
 }

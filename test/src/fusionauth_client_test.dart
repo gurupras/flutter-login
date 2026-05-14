@@ -272,5 +272,68 @@ void main() {
         throwsA(isA<String>()),
       );
     });
+
+    group('appleIdpLogin', () {
+      test('returns TokenResponse on success', () async {
+        final mockResponse = {
+          'token': 'apple_access_token',
+          'refreshToken': 'apple_refresh_token',
+          'tokenType': 'Bearer',
+          'expiresIn': 3600,
+          'userId': 'apple_user_id',
+        };
+
+        when(
+          mockHttpClient.post(
+            Uri.parse('https://example.com/api/identity-provider/login'),
+            headers: anyNamed('headers'),
+            body: anyNamed('body'),
+          ),
+        ).thenAnswer(
+          (_) async => http.Response(json.encode(mockResponse), 200),
+        );
+
+        final tokenResponse = await fusionAuthClient.appleIdpLogin(
+          identityToken: 'apple_identity_token',
+          identityProviderId: 'apple-idp-uuid',
+        );
+
+        expect(tokenResponse.accessToken, 'apple_access_token');
+        expect(tokenResponse.refreshToken, 'apple_refresh_token');
+        expect(tokenResponse.tokenType, 'Bearer');
+        expect(tokenResponse.expiresIn, 3600);
+        expect(tokenResponse.userID, 'apple_user_id');
+
+        verify(
+          mockHttpClient.post(
+            Uri.parse('https://example.com/api/identity-provider/login'),
+            headers: {'content-type': 'application/json'},
+            body: json.encode({
+              'applicationId': 'some-client-id',
+              'identityProviderId': 'apple-idp-uuid',
+              'data': {'token': 'apple_identity_token'},
+            }),
+          ),
+        ).called(1);
+      });
+
+      test('throws on non-200 response', () async {
+        when(
+          mockHttpClient.post(
+            any,
+            headers: anyNamed('headers'),
+            body: anyNamed('body'),
+          ),
+        ).thenAnswer((_) async => http.Response('Unauthorized', 401));
+
+        expect(
+          () => fusionAuthClient.appleIdpLogin(
+            identityToken: 'bad_token',
+            identityProviderId: 'apple-idp-uuid',
+          ),
+          throwsA(isA<String>()),
+        );
+      });
+    });
   });
 }

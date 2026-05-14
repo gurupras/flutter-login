@@ -130,6 +130,36 @@ class FusionAuthClient {
     }
   }
 
+  Future<TokenResponse> appleIdpLogin({
+    required String identityToken,
+    required String identityProviderId,
+  }) async {
+    final result = await _client.post(
+      Uri.parse('$_origin/api/identity-provider/login'),
+      headers: {'content-type': 'application/json'},
+      body: json.encode({
+        'applicationId': clientID,
+        'identityProviderId': identityProviderId,
+        'data': {'token': identityToken},
+      }),
+    );
+    if (result.statusCode == 200) {
+      final response = json.decode(result.body) as Map<String, dynamic>;
+      // FusionAuth IdP login returns `token` and `refreshToken` (camelCase),
+      // not the `access_token` / `refresh_token` form used by /oauth2/token.
+      return TokenResponse(
+        accessToken: response['token'] as String,
+        expiresIn: (response['expiresIn'] as int?) ?? 0,
+        idToken: response['id_token'] as String?,
+        refreshToken: response['refreshToken'] as String?,
+        tokenType: (response['tokenType'] as String?) ?? 'Bearer',
+        userID: response['userId'] as String?,
+      );
+    } else {
+      throw result.body;
+    }
+  }
+
   Future<TokenResponse> exchangeAuthorizationCode(
     String code,
     String codeVerifier,

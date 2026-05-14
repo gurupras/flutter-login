@@ -11,6 +11,7 @@ import 'package:liblogin/src/fusionauth_client.dart';
 import 'package:liblogin/src/login_config.dart';
 import 'package:liblogin/src/auth_models.dart';
 import 'package:liblogin_native/liblogin_native.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:fake_async/fake_async.dart';
 
@@ -29,6 +30,7 @@ class MockUrlLauncher {
   FusionAuthClient,
   MethodChannel,
   LibloginNative,
+  AppleSignInWrapper,
 ])
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -39,6 +41,7 @@ void main() {
       late MockJwtDecoderWrapper mockJwtDecoder;
       late MockFusionAuthClient mockFusionAuthClient;
       late MockLibloginNative mockLibloginNative;
+      late MockAppleSignInWrapper mockAppleSignIn;
       late LoginConfig config;
       late AuthService authService;
 
@@ -48,6 +51,7 @@ void main() {
         mockJwtDecoder = MockJwtDecoderWrapper();
         mockFusionAuthClient = MockFusionAuthClient();
         mockLibloginNative = MockLibloginNative();
+        mockAppleSignIn = MockAppleSignInWrapper();
 
         config = LoginConfig(
           loginDomain: 'example.com',
@@ -114,6 +118,7 @@ void main() {
           jwtDecoder: mockJwtDecoder,
           fusionAuthClient: mockFusionAuthClient,
           libloginNative: mockLibloginNative,
+          appleSignIn: mockAppleSignIn,
         );
       });
 
@@ -939,6 +944,20 @@ void main() {
         late LoginConfig appleConfig;
         late AuthService appleAuthService;
 
+        AuthorizationCredentialAppleID makeCredential({
+          String? identityToken = 'apple_identity_token',
+        }) {
+          return AuthorizationCredentialAppleID(
+            userIdentifier: 'apple_user_123',
+            givenName: 'Jane',
+            familyName: 'Doe',
+            email: 'jane@example.com',
+            authorizationCode: 'auth_code_abc',
+            identityToken: identityToken,
+            state: null,
+          );
+        }
+
         setUp(() {
           appleConfig = LoginConfig(
             loginDomain: 'example.com',
@@ -956,46 +975,133 @@ void main() {
             jwtDecoder: mockJwtDecoder,
             fusionAuthClient: mockFusionAuthClient,
             libloginNative: mockLibloginNative,
+            appleSignIn: mockAppleSignIn,
           );
         });
 
         test(
-          'forwards appleIdentityProviderID as idp_hint and returns true on launch',
+          'calls appleIdpLogin with identity token and emits true on success',
           () async {
             when(
+              mockAppleSignIn.getCredential(),
+            ).thenAnswer((_) async => makeCredential());
+            final tokenResponse = TokenResponse(
+              accessToken: 'apple_access',
+              expiresIn: 3600,
+              tokenType: 'Bearer',
+              userID: 'apple_user_123',
+              refreshToken: 'apple_refresh',
+            );
+            when(
+              mockFusionAuthClient.appleIdpLogin(
+                identityToken: 'apple_identity_token',
+                identityProviderId: 'apple-idp',
+              ),
+            ).thenAnswer((_) async => tokenResponse);
+            when(mockJwtDecoder.decode('apple_access')).thenReturn({
+              'sub': 'apple_user_123',
+              'exp': (DateTime.now().millisecondsSinceEpoch ~/ 1000) + 3600,
+            });
+            when(
               mockSecureStorage.write(
-                key: 'code_verifier',
+                key: anyNamed('key'),
                 value: anyNamed('value'),
               ),
             ).thenAnswer((_) async => {});
-            when(
-              mockLibloginNative.login(
-                authUri: anyNamed('authUri'),
-                redirectUri: anyNamed('redirectUri'),
+
+            final redirectEvents = <bool>[];
+            appleAuthService.authRedirectStream.listen(redirectEvents.add);
+
+            final result = await appleAuthService.initiateAppleLogin();
+            await Future.delayed(Duration.zero);
+            async.elapse(const Duration(hours: 1));
+
+            expect(result, isTrue);
+            expect(redirectEvents, contains(true));
+            verify(
+              mockFusionAuthClient.appleIdpLogin(
+                identityToken: 'apple_identity_token',
+                identityProviderId: 'apple-idp',
               ),
-            ).thenAnswer((_) async => true);
+            ).called(1);
+            verify(
+              mockSecureStorage.write(key: 'accessToken', value: 'apple_access'),
+            ).called(1);
+            verify(
+              mockSecureStorage.write(
+                key: 'refreshToken',
+                value: 'apple_refresh',
+              ),
+            ).called(1);
+          },
+        );
+
+        test(
+          'returns false without calling idpLogin when identity token is null',
+          () async {
+            when(
+              mockAppleSignIn.getCredential(),
+            ).thenAnswer((_) async => makeCredential(identityToken: null));
 
             final result = await appleAuthService.initiateAppleLogin();
             async.elapse(Duration.zero);
 
-            expect(result, isTrue);
-            final captured = verify(
-              mockLibloginNative.login(
-                authUri: captureAnyNamed('authUri'),
-                redirectUri: appleConfig.loginRedirectURI,
+            expect(result, isFalse);
+            verifyNever(
+              mockFusionAuthClient.appleIdpLogin(
+                identityToken: anyNamed('identityToken'),
+                identityProviderId: anyNamed('identityProviderId'),
               ),
-            ).captured;
-            expect(captured, hasLength(1));
-            final Uri authUri = captured.single as Uri;
-            expect(authUri.queryParameters['idp_hint'], 'apple-idp');
-            expect(
-              authUri.queryParameters['client_id'],
-              appleConfig.loginClientID,
             );
-            expect(
-              authUri.queryParameters['response_type'],
-              'code',
-            );
+          },
+        );
+
+        test('returns false silently when user cancels', () async {
+          when(mockAppleSignIn.getCredential()).thenThrow(
+            SignInWithAppleAuthorizationException(
+              code: AuthorizationErrorCode.canceled,
+              message: 'User canceled',
+            ),
+          );
+
+          final redirectEvents = <bool>[];
+          appleAuthService.authRedirectStream.listen(redirectEvents.add);
+
+          final result = await appleAuthService.initiateAppleLogin();
+          async.elapse(Duration.zero);
+
+          expect(result, isFalse);
+          expect(redirectEvents, isEmpty);
+          verifyNever(
+            mockFusionAuthClient.appleIdpLogin(
+              identityToken: anyNamed('identityToken'),
+              identityProviderId: anyNamed('identityProviderId'),
+            ),
+          );
+        });
+
+        test(
+          'returns false and emits false when FusionAuth idpLogin fails',
+          () async {
+            when(
+              mockAppleSignIn.getCredential(),
+            ).thenAnswer((_) async => makeCredential());
+            when(
+              mockFusionAuthClient.appleIdpLogin(
+                identityToken: anyNamed('identityToken'),
+                identityProviderId: anyNamed('identityProviderId'),
+              ),
+            ).thenThrow('IdP login failed');
+
+            final redirectEvents = <bool>[];
+            appleAuthService.authRedirectStream.listen(redirectEvents.add);
+
+            final result = await appleAuthService.initiateAppleLogin();
+            await Future.delayed(Duration.zero);
+            async.elapse(Duration.zero);
+
+            expect(result, isFalse);
+            expect(redirectEvents, contains(false));
           },
         );
 
@@ -1008,26 +1114,6 @@ void main() {
             );
           },
         );
-
-        test('returns false if LibloginNative fails to launch', () async {
-          when(
-            mockSecureStorage.write(
-              key: 'code_verifier',
-              value: anyNamed('value'),
-            ),
-          ).thenAnswer((_) async => {});
-          when(
-            mockLibloginNative.login(
-              authUri: anyNamed('authUri'),
-              redirectUri: anyNamed('redirectUri'),
-            ),
-          ).thenAnswer((_) async => false);
-
-          final result = await appleAuthService.initiateAppleLogin();
-          async.elapse(Duration.zero);
-
-          expect(result, isFalse);
-        });
       });
 
       test('_generateCodeVerifier generates a non-empty string', () {

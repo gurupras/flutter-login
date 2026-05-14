@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:liblogin_native/liblogin_native.dart';
 import 'package:nanoid/nanoid.dart';
 import 'package:logger/logger.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import 'package:liblogin/src/auth_models.dart';
 import 'package:liblogin/src/fusionauth_client.dart';
@@ -17,6 +18,18 @@ import 'package:liblogin/src/login_config.dart';
 class JwtDecoderWrapper {
   bool isExpired(String token) => JwtDecoder.isExpired(token);
   Map<String, dynamic> decode(String token) => JwtDecoder.decode(token);
+}
+
+// Wrapper for SignInWithApple to allow mocking
+class AppleSignInWrapper {
+  Future<AuthorizationCredentialAppleID> getCredential() {
+    return SignInWithApple.getAppleIDCredential(
+      scopes: [
+        AppleIDAuthorizationScopes.email,
+        AppleIDAuthorizationScopes.fullName,
+      ],
+    );
+  }
 }
 
 class AuthService {
@@ -77,14 +90,16 @@ class AuthService {
   bool _isRefreshing = false;
 
   final LibloginNative _libloginNative;
+  final AppleSignInWrapper _appleSignIn;
 
   AuthService({
     required LoginConfig config,
     FlutterSecureStorage? secureStorage,
     http.Client? httpClient,
     JwtDecoderWrapper? jwtDecoder,
-    FusionAuthClient? fusionAuthClient, // Add this for injection
+    FusionAuthClient? fusionAuthClient,
     LibloginNative? libloginNative,
+    AppleSignInWrapper? appleSignIn,
   }) : _config = config,
        _secureStorage = secureStorage ?? const FlutterSecureStorage(),
        _httpClient = httpClient ?? http.Client(),
@@ -95,7 +110,8 @@ class AuthService {
              config: config,
              httpClient: httpClient ?? http.Client(),
            ),
-       _libloginNative = libloginNative ?? LibloginNative() {
+       _libloginNative = libloginNative ?? LibloginNative(),
+       _appleSignIn = appleSignIn ?? AppleSignInWrapper() {
     log.i('[AuthService] constructor: registering auth redirect handler');
     _libloginNative.setAuthRedirectHandler((url) => _handleAuthRedirect(url));
   }
@@ -245,14 +261,11 @@ class AuthService {
     );
   }
 
-  /// Initiates Sign in with Apple via the FusionAuth Apple IdP.
-  ///
-  /// Uses the same OAuth2 + PKCE redirect flow as Google: the user is sent
-  /// to FusionAuth, which delegates to Apple, then redirects back to the
-  /// configured [LoginConfig.loginRedirectURI].
+  /// Initiates native Sign in with Apple using [AppleSignInWrapper], then
+  /// exchanges the resulting identity token with FusionAuth's IdP login API.
   ///
   /// Throws a [StateError] if [LoginConfig.appleIdentityProviderID] is not set.
-  Future<bool> initiateAppleLogin() {
+  Future<bool> initiateAppleLogin() async {
     final appleIdpID = _config.appleIdentityProviderID;
     if (appleIdpID == null) {
       throw StateError(
@@ -260,10 +273,33 @@ class AuthService {
         'Set it before calling initiateAppleLogin().',
       );
     }
-    return _initiateSocialLogin(
-      idpHint: appleIdpID,
-      providerLabel: 'Apple',
-    );
+    try {
+      final credential = await _appleSignIn.getCredential();
+      final identityToken = credential.identityToken;
+      if (identityToken == null) {
+        log.w('Apple sign in returned null identity token');
+        return false;
+      }
+      final tokens = await _fusionAuthClient.appleIdpLogin(
+        identityToken: identityToken,
+        identityProviderId: appleIdpID,
+      );
+      await _storeTokens(tokens);
+      _authRedirectController.add(true);
+      return true;
+    } on SignInWithAppleAuthorizationException catch (e) {
+      if (e.code == AuthorizationErrorCode.canceled) {
+        log.i('Apple sign in cancelled by user');
+        return false;
+      }
+      log.e('Apple sign in failed: ${e.message}');
+      _authRedirectController.add(false);
+      return false;
+    } catch (e, stackTrace) {
+      log.e('Apple sign in failed', error: e, stackTrace: stackTrace);
+      _authRedirectController.add(false);
+      return false;
+    }
   }
 
   Future<bool> _initiateSocialLogin({
