@@ -273,6 +273,14 @@ class AuthService {
         'Set it before calling initiateAppleLogin().',
       );
     }
+    final appleBundleID = _config.appleBundleID;
+    if (appleBundleID == null) {
+      throw StateError(
+        'appleBundleID is not configured on LoginConfig. '
+        'Set it (typically the iOS/macOS bundle identifier) before calling '
+        'initiateAppleLogin().',
+      );
+    }
     try {
       final credential = await _appleSignIn.getCredential();
       final identityToken = credential.identityToken;
@@ -280,9 +288,25 @@ class AuthService {
         log.w('Apple sign in returned null identity token');
         return false;
       }
+      try {
+        final claims = _jwtDecoder.decode(identityToken);
+        log.i(
+          'Apple id_token claims: aud=${claims['aud']} iss=${claims['iss']} '
+          'sub=${claims['sub']} email=${claims['email']} '
+          'iat=${claims['iat']} exp=${claims['exp']}',
+        );
+      } catch (e) {
+        log.w('Could not decode Apple id_token for diagnostics: $e');
+      }
+      log.i(
+        'Sending to FusionAuth appleIdpLogin: '
+        'identityProviderId=$appleIdpID redirectUri=$appleBundleID',
+      );
       final tokens = await _fusionAuthClient.appleIdpLogin(
         identityToken: identityToken,
+        authorizationCode: credential.authorizationCode,
         identityProviderId: appleIdpID,
+        redirectUri: appleBundleID,
       );
       await _storeTokens(tokens);
       _authRedirectController.add(true);

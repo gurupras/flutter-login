@@ -132,7 +132,9 @@ class FusionAuthClient {
 
   Future<TokenResponse> appleIdpLogin({
     required String identityToken,
+    required String authorizationCode,
     required String identityProviderId,
+    required String redirectUri,
   }) async {
     final result = await _client.post(
       Uri.parse('$_origin/api/identity-provider/login'),
@@ -140,7 +142,12 @@ class FusionAuthClient {
       body: json.encode({
         'applicationId': clientID,
         'identityProviderId': identityProviderId,
-        'data': {'token': identityToken},
+        'data': {
+          'id_token': identityToken,
+          'code': authorizationCode,
+          'redirect_uri': redirectUri,
+          'isNativeApp': 'true',
+        },
       }),
     );
     if (result.statusCode == 200) {
