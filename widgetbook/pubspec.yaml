@@ -1,0 +1,22 @@
+name: liblogin_widgetbook
+description: Widgetbook previews for liblogin's LoginPage configurations.
+publish_to: none
+version: 1.0.0
+
+environment:
+  sdk: ^3.10.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+  liblogin:
+    path: ../
+  flutter_bloc: ^9.1.1
+  flutter_vector_icons: ^2.0.0
+  widgetbook: ^3.23.0
+
+dev_dependencies:
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true

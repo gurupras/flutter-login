@@ -5,7 +5,7 @@ A comprehensive Flutter authentication library supporting FusionAuth, OAuth2, an
 ## Features
 
 - **FusionAuth Integration**: Seamless connection with FusionAuth for user management.
-- **Social Login**: Support for Google and Apple Sign-In via FusionAuth IdPs over OAuth2.
+- **Social Login**: Native Google and Apple Sign-In on iOS/Android (on-device account sheet → FusionAuth IdP login API), with an automatic browser-OAuth fallback on web/desktop.
 - **Secure Storage**: Automatic token management and secure storage using `flutter_secure_storage`.
 - **Auto-Refresh**: Proactive background token refresh 15 minutes before expiry, using the standard OAuth2 refresh token grant. Works for all auth methods including Google OAuth.
 - **Bloc-based Architecture**: Easy integration into Flutter apps using the BLoC pattern.
@@ -81,6 +81,12 @@ final config = LoginConfig(
   googleIdentityProviderID: 'google-idp-id',
   // Optional — provide to enable the built-in Apple button.
   appleIdentityProviderID: 'apple-idp-id',
+  appleBundleID: 'your.bundle.id',
+  // Optional — native Google Sign-In. See "Native Google Sign-In" below.
+  // The FusionAuth-configured Google **web** client ID; makes the native
+  // id_token's `aud` match what FusionAuth validates against.
+  googleServerClientId: 'xxxx.apps.googleusercontent.com',
+  // useNativeGoogle defaults to true (native on iOS/Android, web elsewhere).
 );
 
 final authService = AuthService(config: config);
@@ -151,6 +157,64 @@ consumers.
 > non–App Store iOS distributions. For App Store submissions you may need
 > to add a native iOS path on top of this redirect flow — file a follow-up
 > if review requires it.
+
+#### Native Google Sign-In
+
+By default the built-in Google button now uses the **native** `google_sign_in`
+account sheet on iOS/Android — the user picks a Google account on-device and
+the resulting `id_token` is posted straight to FusionAuth's "Complete the
+Google Login" IdP endpoint (`POST /api/identity-provider/login`). No browser
+hop. On web/desktop (or when `useNativeGoogle: false`), it transparently falls
+back to the existing browser OAuth flow (`initiateGoogleLogin()`), which is
+left fully intact.
+
+Tapping the Google button calls `AuthService.initiateGoogleNativeLogin()` on
+mobile; you can also call it directly for a custom button.
+
+**The audience gotcha (read this).** With `google_sign_in`, the `id_token.aud`
+defaults to the platform (iOS/Android) OAuth client ID. FusionAuth validates
+the token against the client ID configured on its Google IdP (typically the
+**web** client). For FusionAuth to accept the native token you must make the
+two agree — pick **one**:
+
+- **(Recommended) Set `LoginConfig.googleServerClientId`** to FusionAuth's
+  configured Google **web** client ID. liblogin passes it to `google_sign_in`
+  as `serverClientId`, so the issued `id_token.aud` is that web client ID — the
+  value FusionAuth expects. One field, done.
+- **Or register the native client IDs on the FusionAuth Google IdP** as
+  additional accepted client IDs, and leave `googleServerClientId` null.
+
+New `LoginConfig` fields:
+
+| Field | Required | Purpose |
+| --- | --- | --- |
+| `googleServerClientId` | Recommended | Google **web** client ID → `serverClientId` for `google_sign_in`, sets the native `id_token`'s `aud` to what FusionAuth validates. |
+| `googleIosClientId` | Optional | iOS OAuth client ID → `clientId`. Usually supplied via `Info.plist` instead. |
+| `useNativeGoogle` | Optional (default `true`) | `false` forces the web OAuth flow everywhere. |
+
+##### Consumer integration steps (done outside this library)
+
+These live in the downstream app and external consoles — liblogin can't do
+them for you:
+
+1. **Google Cloud Console.** Create an **iOS** OAuth client ID for your bundle
+   (e.g. `xyz.twoseven.app.flutterRemoteControl`), and — if you use
+   `googleServerClientId` — a **Web** OAuth client ID.
+2. **iOS `Info.plist`.** Add the reversed iOS client ID under
+   `CFBundleURLTypes` (the `com.googleusercontent.apps.…` URL scheme) and set
+   `GIDClientID` to the iOS client ID (or pass client IDs to `GoogleSignIn`
+   via `LoginConfig.googleIosClientId`). See the
+   [`google_sign_in_ios` README](https://pub.dev/packages/google_sign_in_ios).
+3. **Android.** No client-ID entry is needed in the manifest; Google matches
+   the app by package name + SHA-1. Register your signing SHA-1 fingerprints on
+   an **Android** OAuth client ID in the Cloud Console.
+4. **FusionAuth Google IdP.** Ensure it accepts the native token's audience —
+   either configure it with the web client ID that matches
+   `googleServerClientId`, or add your native client IDs to its accepted client
+   IDs. The IdP UUID is at *Settings → Identity Providers → Google →* (the UUID
+   in the edit URL); set it as `googleIdentityProviderID`.
+5. **`LoginConfig`.** Populate `googleServerClientId` (and optionally
+   `googleIosClientId` / `useNativeGoogle`).
 
 #### Configuring social providers
 

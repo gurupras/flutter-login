@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_login/flutter_login.dart';
@@ -64,7 +65,19 @@ class LoginPage extends StatelessWidget {
         icon: FontAwesome.google,
         label: 'Google',
         callback: () async {
-          await authService.initiateGoogleLogin();
+          // Prefer the native google_sign_in sheet on iOS/Android; fall back to
+          // the web OAuth flow everywhere else (web/desktop) or when the
+          // consumer opts out via LoginConfig.useNativeGoogle.
+          final useNative =
+              authService.config.useNativeGoogle &&
+              !kIsWeb &&
+              (defaultTargetPlatform == TargetPlatform.iOS ||
+                  defaultTargetPlatform == TargetPlatform.android);
+          if (useNative) {
+            await authService.initiateGoogleNativeLogin();
+          } else {
+            await authService.initiateGoogleLogin();
+          }
           return null;
         },
       ),

@@ -11,7 +11,10 @@ void main() {
   late MockAuthService mockAuthService;
   late AuthBloc authBloc;
 
-  LoginConfig buildConfig({String? appleIdentityProviderID}) {
+  LoginConfig buildConfig({
+    String? appleIdentityProviderID,
+    bool useNativeGoogle = true,
+  }) {
     return LoginConfig(
       loginDomain: 'example.com',
       signupOrigin: 'https://signup.example.com',
@@ -20,15 +23,22 @@ void main() {
       loginRedirectURI: 'app://callback',
       googleIdentityProviderID: 'google-idp',
       appleIdentityProviderID: appleIdentityProviderID,
+      useNativeGoogle: useNativeGoogle,
     );
   }
 
-  void stubAuthService({String? appleIdentityProviderID}) {
+  void stubAuthService({
+    String? appleIdentityProviderID,
+    bool useNativeGoogle = true,
+  }) {
     when(
       mockAuthService.authRedirectStream,
     ).thenAnswer((_) => const Stream.empty());
     when(mockAuthService.config).thenReturn(
-      buildConfig(appleIdentityProviderID: appleIdentityProviderID),
+      buildConfig(
+        appleIdentityProviderID: appleIdentityProviderID,
+        useNativeGoogle: useNativeGoogle,
+      ),
     );
   }
 
@@ -172,6 +182,45 @@ void main() {
     );
     expect(flutterLogin.termsOfService, [tos]);
   });
+
+  testWidgets(
+    'default Google provider uses native flow on mobile when useNativeGoogle is true',
+    (tester) async {
+      when(
+        mockAuthService.initiateGoogleNativeLogin(),
+      ).thenAnswer((_) async => true);
+      final flutterLogin = await capture(
+        tester,
+        const LoginPage(title: 'Test App'),
+      );
+      final google = flutterLogin.loginProviders.firstWhere(
+        (p) => p.label == 'Google',
+      );
+      await google.callback();
+      verify(mockAuthService.initiateGoogleNativeLogin()).called(1);
+      verifyNever(mockAuthService.initiateGoogleLogin());
+    },
+  );
+
+  testWidgets(
+    'default Google provider uses web flow when useNativeGoogle is false',
+    (tester) async {
+      stubAuthService(useNativeGoogle: false);
+      when(
+        mockAuthService.initiateGoogleLogin(),
+      ).thenAnswer((_) async => true);
+      final flutterLogin = await capture(
+        tester,
+        const LoginPage(title: 'Test App'),
+      );
+      final google = flutterLogin.loginProviders.firstWhere(
+        (p) => p.label == 'Google',
+      );
+      await google.callback();
+      verify(mockAuthService.initiateGoogleLogin()).called(1);
+      verifyNever(mockAuthService.initiateGoogleNativeLogin());
+    },
+  );
 
   test(
     'asserts that socialProviders is non-empty when email/password is disabled',

@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:liblogin_native/liblogin_native.dart';
 import 'package:nanoid/nanoid.dart';
 import 'package:logger/logger.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import 'package:liblogin/src/auth_models.dart';
@@ -29,6 +30,54 @@ class AppleSignInWrapper {
         AppleIDAuthorizationScopes.fullName,
       ],
     );
+  }
+}
+
+// Wrapper for google_sign_in to allow mocking.
+//
+// Uses the google_sign_in v7 API (`GoogleSignIn.instance`, `initialize`,
+// `authenticate`). [initialize] must be called exactly once before
+// [authenticate]; this wrapper handles that lazily on the first call.
+class GoogleSignInWrapper {
+  final GoogleSignIn _googleSignIn;
+
+  /// FusionAuth's Google **web** client ID, forwarded to
+  /// [GoogleSignIn.initialize] as `serverClientId` so the issued `id_token`
+  /// carries the audience FusionAuth expects. See
+  /// [LoginConfig.googleServerClientId].
+  final String? serverClientId;
+
+  /// Platform (iOS) OAuth client ID, forwarded as `clientId`. Usually null and
+  /// supplied via native config instead. See [LoginConfig.googleIosClientId].
+  final String? clientId;
+
+  bool _initialized = false;
+
+  GoogleSignInWrapper({
+    GoogleSignIn? googleSignIn,
+    this.serverClientId,
+    this.clientId,
+  }) : _googleSignIn = googleSignIn ?? GoogleSignIn.instance;
+
+  Future<void> _ensureInitialized() async {
+    if (_initialized) return;
+    await _googleSignIn.initialize(
+      clientId: clientId,
+      serverClientId: serverClientId,
+    );
+    _initialized = true;
+  }
+
+  /// Triggers the native Google account sheet and returns the resulting
+  /// `id_token`, or null if Google returned no id token.
+  ///
+  /// Throws a [GoogleSignInException] (e.g. with
+  /// [GoogleSignInExceptionCode.canceled] when the user dismisses the sheet),
+  /// which callers are expected to handle.
+  Future<String?> getIdToken() async {
+    await _ensureInitialized();
+    final account = await _googleSignIn.authenticate();
+    return account.authentication.idToken;
   }
 }
 
@@ -91,6 +140,7 @@ class AuthService {
 
   final LibloginNative _libloginNative;
   final AppleSignInWrapper _appleSignIn;
+  final GoogleSignInWrapper _googleSignIn;
 
   AuthService({
     required LoginConfig config,
@@ -100,6 +150,7 @@ class AuthService {
     FusionAuthClient? fusionAuthClient,
     LibloginNative? libloginNative,
     AppleSignInWrapper? appleSignIn,
+    GoogleSignInWrapper? googleSignIn,
   }) : _config = config,
        _secureStorage = secureStorage ?? const FlutterSecureStorage(),
        _httpClient = httpClient ?? http.Client(),
@@ -111,7 +162,13 @@ class AuthService {
              httpClient: httpClient ?? http.Client(),
            ),
        _libloginNative = libloginNative ?? LibloginNative(),
-       _appleSignIn = appleSignIn ?? AppleSignInWrapper() {
+       _appleSignIn = appleSignIn ?? AppleSignInWrapper(),
+       _googleSignIn =
+           googleSignIn ??
+           GoogleSignInWrapper(
+             serverClientId: config.googleServerClientId,
+             clientId: config.googleIosClientId,
+           ) {
     log.i('[AuthService] constructor: registering auth redirect handler');
     _libloginNative.setAuthRedirectHandler((url) => _handleAuthRedirect(url));
   }
@@ -321,6 +378,65 @@ class AuthService {
       return false;
     } catch (e, stackTrace) {
       log.e('Apple sign in failed', error: e, stackTrace: stackTrace);
+      _authRedirectController.add(false);
+      return false;
+    }
+  }
+
+  /// Initiates native Google Sign-In using [GoogleSignInWrapper], then
+  /// exchanges the resulting `id_token` with FusionAuth's IdP login API.
+  ///
+  /// Structural mirror of [initiateAppleLogin]. Returns true on success. On
+  /// user cancellation or a missing id_token it returns false quietly (no
+  /// `authRedirectStream` event); on any other failure it emits false and
+  /// returns false.
+  ///
+  /// Throws a [StateError] if [LoginConfig.googleIdentityProviderID] is empty.
+  Future<bool> initiateGoogleNativeLogin() async {
+    final googleIdpID = _config.googleIdentityProviderID;
+    if (googleIdpID.isEmpty) {
+      throw StateError(
+        'googleIdentityProviderID is not configured on LoginConfig. '
+        'Set it before calling initiateGoogleNativeLogin().',
+      );
+    }
+    try {
+      final idToken = await _googleSignIn.getIdToken();
+      if (idToken == null) {
+        log.w('Google sign in returned null id token');
+        return false;
+      }
+      try {
+        final claims = _jwtDecoder.decode(idToken);
+        log.i(
+          'Google id_token claims: aud=${claims['aud']} iss=${claims['iss']} '
+          'sub=${claims['sub']} email=${claims['email']} '
+          'iat=${claims['iat']} exp=${claims['exp']}',
+        );
+      } catch (e) {
+        log.w('Could not decode Google id_token for diagnostics: $e');
+      }
+      log.i(
+        'Sending to FusionAuth googleIdpLogin: '
+        'identityProviderId=$googleIdpID',
+      );
+      final tokens = await _fusionAuthClient.googleIdpLogin(
+        idToken: idToken,
+        identityProviderId: googleIdpID,
+      );
+      await _storeTokens(tokens);
+      _authRedirectController.add(true);
+      return true;
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) {
+        log.i('Google sign in cancelled by user');
+        return false;
+      }
+      log.e('Google sign in failed: ${e.code} ${e.description}');
+      _authRedirectController.add(false);
+      return false;
+    } catch (e, stackTrace) {
+      log.e('Google sign in failed', error: e, stackTrace: stackTrace);
       _authRedirectController.add(false);
       return false;
     }

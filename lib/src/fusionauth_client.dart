@@ -167,6 +167,44 @@ class FusionAuthClient {
     }
   }
 
+  /// Completes a native Google Sign-In by posting the Google `id_token` to
+  /// FusionAuth's "Complete the Google Login" endpoint
+  /// (`POST /api/identity-provider/login`).
+  ///
+  /// Mirrors [appleIdpLogin]; the Google variant only needs `data.token`
+  /// (the id_token). FusionAuth validates the token's audience against the
+  /// client ID configured on its Google IdP — see
+  /// [LoginConfig.googleServerClientId].
+  Future<TokenResponse> googleIdpLogin({
+    required String idToken,
+    required String identityProviderId,
+  }) async {
+    final result = await _client.post(
+      Uri.parse('$_origin/api/identity-provider/login'),
+      headers: {'content-type': 'application/json'},
+      body: json.encode({
+        'applicationId': clientID,
+        'identityProviderId': identityProviderId,
+        'data': {'token': idToken},
+      }),
+    );
+    if (result.statusCode == 200) {
+      final response = json.decode(result.body) as Map<String, dynamic>;
+      // FusionAuth IdP login returns `token` and `refreshToken` (camelCase),
+      // not the `access_token` / `refresh_token` form used by /oauth2/token.
+      return TokenResponse(
+        accessToken: response['token'] as String,
+        expiresIn: (response['expiresIn'] as int?) ?? 0,
+        idToken: response['id_token'] as String?,
+        refreshToken: response['refreshToken'] as String?,
+        tokenType: (response['tokenType'] as String?) ?? 'Bearer',
+        userID: response['userId'] as String?,
+      );
+    } else {
+      throw result.body;
+    }
+  }
+
   Future<TokenResponse> exchangeAuthorizationCode(
     String code,
     String codeVerifier,

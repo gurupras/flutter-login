@@ -11,6 +11,7 @@ import 'package:liblogin/src/fusionauth_client.dart';
 import 'package:liblogin/src/login_config.dart';
 import 'package:liblogin/src/auth_models.dart';
 import 'package:liblogin_native/liblogin_native.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:fake_async/fake_async.dart';
@@ -31,6 +32,7 @@ class MockUrlLauncher {
   MethodChannel,
   LibloginNative,
   AppleSignInWrapper,
+  GoogleSignInWrapper,
 ])
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -42,6 +44,7 @@ void main() {
       late MockFusionAuthClient mockFusionAuthClient;
       late MockLibloginNative mockLibloginNative;
       late MockAppleSignInWrapper mockAppleSignIn;
+      late MockGoogleSignInWrapper mockGoogleSignIn;
       late LoginConfig config;
       late AuthService authService;
 
@@ -52,6 +55,7 @@ void main() {
         mockFusionAuthClient = MockFusionAuthClient();
         mockLibloginNative = MockLibloginNative();
         mockAppleSignIn = MockAppleSignInWrapper();
+        mockGoogleSignIn = MockGoogleSignInWrapper();
 
         config = LoginConfig(
           loginDomain: 'example.com',
@@ -119,6 +123,7 @@ void main() {
           fusionAuthClient: mockFusionAuthClient,
           libloginNative: mockLibloginNative,
           appleSignIn: mockAppleSignIn,
+          googleSignIn: mockGoogleSignIn,
         );
       });
 
@@ -967,6 +972,7 @@ void main() {
             loginRedirectURI: 'https://example.com/callback',
             googleIdentityProviderID: 'google-idp',
             appleIdentityProviderID: 'apple-idp',
+            appleBundleID: 'xyz.twoseven.app.flutterRemoteControl',
           );
           appleAuthService = AuthService(
             config: appleConfig,
@@ -976,6 +982,7 @@ void main() {
             fusionAuthClient: mockFusionAuthClient,
             libloginNative: mockLibloginNative,
             appleSignIn: mockAppleSignIn,
+            googleSignIn: mockGoogleSignIn,
           );
         });
 
@@ -995,7 +1002,9 @@ void main() {
             when(
               mockFusionAuthClient.appleIdpLogin(
                 identityToken: 'apple_identity_token',
+                authorizationCode: 'auth_code_abc',
                 identityProviderId: 'apple-idp',
+                redirectUri: 'xyz.twoseven.app.flutterRemoteControl',
               ),
             ).thenAnswer((_) async => tokenResponse);
             when(mockJwtDecoder.decode('apple_access')).thenReturn({
@@ -1021,7 +1030,9 @@ void main() {
             verify(
               mockFusionAuthClient.appleIdpLogin(
                 identityToken: 'apple_identity_token',
+                authorizationCode: 'auth_code_abc',
                 identityProviderId: 'apple-idp',
+                redirectUri: 'xyz.twoseven.app.flutterRemoteControl',
               ),
             ).called(1);
             verify(
@@ -1050,7 +1061,9 @@ void main() {
             verifyNever(
               mockFusionAuthClient.appleIdpLogin(
                 identityToken: anyNamed('identityToken'),
+                authorizationCode: anyNamed('authorizationCode'),
                 identityProviderId: anyNamed('identityProviderId'),
+                redirectUri: anyNamed('redirectUri'),
               ),
             );
           },
@@ -1075,7 +1088,9 @@ void main() {
           verifyNever(
             mockFusionAuthClient.appleIdpLogin(
               identityToken: anyNamed('identityToken'),
+              authorizationCode: anyNamed('authorizationCode'),
               identityProviderId: anyNamed('identityProviderId'),
+              redirectUri: anyNamed('redirectUri'),
             ),
           );
         });
@@ -1089,7 +1104,9 @@ void main() {
             when(
               mockFusionAuthClient.appleIdpLogin(
                 identityToken: anyNamed('identityToken'),
+                authorizationCode: anyNamed('authorizationCode'),
                 identityProviderId: anyNamed('identityProviderId'),
+                redirectUri: anyNamed('redirectUri'),
               ),
             ).thenThrow('IdP login failed');
 
@@ -1110,6 +1127,194 @@ void main() {
           () {
             expect(
               () => authService.initiateAppleLogin(),
+              throwsA(isA<StateError>()),
+            );
+          },
+        );
+      });
+
+      group('initiateGoogleNativeLogin', () {
+        test(
+          'calls googleIdpLogin with id token and emits true on success',
+          () async {
+            when(
+              mockGoogleSignIn.getIdToken(),
+            ).thenAnswer((_) async => 'google_id_token');
+            final tokenResponse = TokenResponse(
+              accessToken: 'google_access',
+              expiresIn: 3600,
+              tokenType: 'Bearer',
+              userID: 'google_user_123',
+              refreshToken: 'google_refresh',
+            );
+            when(
+              mockFusionAuthClient.googleIdpLogin(
+                idToken: 'google_id_token',
+                identityProviderId: 'google-idp',
+              ),
+            ).thenAnswer((_) async => tokenResponse);
+            when(mockJwtDecoder.decode('google_access')).thenReturn({
+              'sub': 'google_user_123',
+              'exp': (DateTime.now().millisecondsSinceEpoch ~/ 1000) + 3600,
+            });
+            when(
+              mockSecureStorage.write(
+                key: anyNamed('key'),
+                value: anyNamed('value'),
+              ),
+            ).thenAnswer((_) async => {});
+
+            final redirectEvents = <bool>[];
+            authService.authRedirectStream.listen(redirectEvents.add);
+
+            final result = await authService.initiateGoogleNativeLogin();
+            await Future.delayed(Duration.zero);
+            async.elapse(const Duration(hours: 1));
+
+            expect(result, isTrue);
+            expect(redirectEvents, contains(true));
+            verify(
+              mockFusionAuthClient.googleIdpLogin(
+                idToken: 'google_id_token',
+                identityProviderId: 'google-idp',
+              ),
+            ).called(1);
+            verify(
+              mockSecureStorage.write(
+                key: 'accessToken',
+                value: 'google_access',
+              ),
+            ).called(1);
+            verify(
+              mockSecureStorage.write(
+                key: 'refreshToken',
+                value: 'google_refresh',
+              ),
+            ).called(1);
+          },
+        );
+
+        test(
+          'returns false without calling idpLogin when id token is null',
+          () async {
+            when(mockGoogleSignIn.getIdToken()).thenAnswer((_) async => null);
+
+            final redirectEvents = <bool>[];
+            authService.authRedirectStream.listen(redirectEvents.add);
+
+            final result = await authService.initiateGoogleNativeLogin();
+            async.elapse(Duration.zero);
+
+            expect(result, isFalse);
+            expect(redirectEvents, isEmpty);
+            verifyNever(
+              mockFusionAuthClient.googleIdpLogin(
+                idToken: anyNamed('idToken'),
+                identityProviderId: anyNamed('identityProviderId'),
+              ),
+            );
+          },
+        );
+
+        test('returns false silently when user cancels', () async {
+          when(mockGoogleSignIn.getIdToken()).thenThrow(
+            const GoogleSignInException(
+              code: GoogleSignInExceptionCode.canceled,
+              description: 'User canceled',
+            ),
+          );
+
+          final redirectEvents = <bool>[];
+          authService.authRedirectStream.listen(redirectEvents.add);
+
+          final result = await authService.initiateGoogleNativeLogin();
+          async.elapse(Duration.zero);
+
+          expect(result, isFalse);
+          expect(redirectEvents, isEmpty);
+          verifyNever(
+            mockFusionAuthClient.googleIdpLogin(
+              idToken: anyNamed('idToken'),
+              identityProviderId: anyNamed('identityProviderId'),
+            ),
+          );
+        });
+
+        test(
+          'returns false and emits false when FusionAuth idpLogin fails',
+          () async {
+            when(
+              mockGoogleSignIn.getIdToken(),
+            ).thenAnswer((_) async => 'google_id_token');
+            when(
+              mockFusionAuthClient.googleIdpLogin(
+                idToken: anyNamed('idToken'),
+                identityProviderId: anyNamed('identityProviderId'),
+              ),
+            ).thenThrow('IdP login failed');
+
+            final redirectEvents = <bool>[];
+            authService.authRedirectStream.listen(redirectEvents.add);
+
+            final result = await authService.initiateGoogleNativeLogin();
+            await Future.delayed(Duration.zero);
+            async.elapse(Duration.zero);
+
+            expect(result, isFalse);
+            expect(redirectEvents, contains(false));
+          },
+        );
+
+        test(
+          'returns false and emits false on non-cancel GoogleSignInException',
+          () async {
+            when(mockGoogleSignIn.getIdToken()).thenThrow(
+              const GoogleSignInException(
+                code: GoogleSignInExceptionCode.clientConfigurationError,
+                description: 'Misconfigured client',
+              ),
+            );
+
+            final redirectEvents = <bool>[];
+            authService.authRedirectStream.listen(redirectEvents.add);
+
+            final result = await authService.initiateGoogleNativeLogin();
+            async.elapse(Duration.zero);
+
+            expect(result, isFalse);
+            expect(redirectEvents, contains(false));
+            verifyNever(
+              mockFusionAuthClient.googleIdpLogin(
+                idToken: anyNamed('idToken'),
+                identityProviderId: anyNamed('identityProviderId'),
+              ),
+            );
+          },
+        );
+
+        test(
+          'throws StateError when googleIdentityProviderID is empty',
+          () {
+            final emptyIdpConfig = LoginConfig(
+              loginDomain: 'example.com',
+              signupOrigin: 'https://signup.example.com',
+              loginTenantID: 'some-tenant-id',
+              loginClientID: 'some-client-id',
+              loginRedirectURI: 'https://example.com/callback',
+              googleIdentityProviderID: '',
+            );
+            final emptyIdpService = AuthService(
+              config: emptyIdpConfig,
+              secureStorage: mockSecureStorage,
+              httpClient: mockHttpClient,
+              jwtDecoder: mockJwtDecoder,
+              fusionAuthClient: mockFusionAuthClient,
+              libloginNative: mockLibloginNative,
+              appleSignIn: mockAppleSignIn,
+              googleSignIn: mockGoogleSignIn,
+            );
+            expect(
+              () => emptyIdpService.initiateGoogleNativeLogin(),
               throwsA(isA<StateError>()),
             );
           },

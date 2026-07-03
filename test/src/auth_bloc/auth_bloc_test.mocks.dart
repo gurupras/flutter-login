@@ -121,6 +121,14 @@ class MockAuthService extends _i1.Mock implements _i4.AuthService {
           as _i5.Future<bool>);
 
   @override
+  _i5.Future<bool> initiateGoogleNativeLogin() =>
+      (super.noSuchMethod(
+            Invocation.method(#initiateGoogleNativeLogin, []),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
   _i5.Future<bool> recoverPassword(String? email) =>
       (super.noSuchMethod(
             Invocation.method(#recoverPassword, [email]),

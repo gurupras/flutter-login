@@ -295,7 +295,9 @@ void main() {
 
         final tokenResponse = await fusionAuthClient.appleIdpLogin(
           identityToken: 'apple_identity_token',
+          authorizationCode: 'apple_auth_code',
           identityProviderId: 'apple-idp-uuid',
+          redirectUri: 'xyz.twoseven.app.flutterRemoteControl',
         );
 
         expect(tokenResponse.accessToken, 'apple_access_token');
@@ -311,7 +313,12 @@ void main() {
             body: json.encode({
               'applicationId': 'some-client-id',
               'identityProviderId': 'apple-idp-uuid',
-              'data': {'token': 'apple_identity_token'},
+              'data': {
+                'id_token': 'apple_identity_token',
+                'code': 'apple_auth_code',
+                'redirect_uri': 'xyz.twoseven.app.flutterRemoteControl',
+                'isNativeApp': 'true',
+              },
             }),
           ),
         ).called(1);
@@ -329,7 +336,72 @@ void main() {
         expect(
           () => fusionAuthClient.appleIdpLogin(
             identityToken: 'bad_token',
+            authorizationCode: 'bad_code',
             identityProviderId: 'apple-idp-uuid',
+            redirectUri: 'xyz.twoseven.app.flutterRemoteControl',
+          ),
+          throwsA(isA<String>()),
+        );
+      });
+    });
+
+    group('googleIdpLogin', () {
+      test('returns TokenResponse on success', () async {
+        final mockResponse = {
+          'token': 'google_access_token',
+          'refreshToken': 'google_refresh_token',
+          'tokenType': 'Bearer',
+          'expiresIn': 3600,
+          'userId': 'google_user_id',
+        };
+
+        when(
+          mockHttpClient.post(
+            Uri.parse('https://example.com/api/identity-provider/login'),
+            headers: anyNamed('headers'),
+            body: anyNamed('body'),
+          ),
+        ).thenAnswer(
+          (_) async => http.Response(json.encode(mockResponse), 200),
+        );
+
+        final tokenResponse = await fusionAuthClient.googleIdpLogin(
+          idToken: 'google_id_token',
+          identityProviderId: 'google-idp-uuid',
+        );
+
+        expect(tokenResponse.accessToken, 'google_access_token');
+        expect(tokenResponse.refreshToken, 'google_refresh_token');
+        expect(tokenResponse.tokenType, 'Bearer');
+        expect(tokenResponse.expiresIn, 3600);
+        expect(tokenResponse.userID, 'google_user_id');
+
+        verify(
+          mockHttpClient.post(
+            Uri.parse('https://example.com/api/identity-provider/login'),
+            headers: {'content-type': 'application/json'},
+            body: json.encode({
+              'applicationId': 'some-client-id',
+              'identityProviderId': 'google-idp-uuid',
+              'data': {'token': 'google_id_token'},
+            }),
+          ),
+        ).called(1);
+      });
+
+      test('throws on non-200 response', () async {
+        when(
+          mockHttpClient.post(
+            any,
+            headers: anyNamed('headers'),
+            body: anyNamed('body'),
+          ),
+        ).thenAnswer((_) async => http.Response('Unauthorized', 401));
+
+        expect(
+          () => fusionAuthClient.googleIdpLogin(
+            idToken: 'bad_token',
+            identityProviderId: 'google-idp-uuid',
           ),
           throwsA(isA<String>()),
         );

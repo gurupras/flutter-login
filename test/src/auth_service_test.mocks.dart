@@ -722,18 +722,46 @@ class MockFusionAuthClient extends _i1.Mock implements _i13.FusionAuthClient {
   @override
   _i8.Future<_i4.TokenResponse> appleIdpLogin({
     required String? identityToken,
+    required String? authorizationCode,
     required String? identityProviderId,
+    required String? redirectUri,
   }) =>
       (super.noSuchMethod(
             Invocation.method(#appleIdpLogin, [], {
               #identityToken: identityToken,
+              #authorizationCode: authorizationCode,
               #identityProviderId: identityProviderId,
+              #redirectUri: redirectUri,
             }),
             returnValue: _i8.Future<_i4.TokenResponse>.value(
               _FakeTokenResponse_9(
                 this,
                 Invocation.method(#appleIdpLogin, [], {
                   #identityToken: identityToken,
+                  #authorizationCode: authorizationCode,
+                  #identityProviderId: identityProviderId,
+                  #redirectUri: redirectUri,
+                }),
+              ),
+            ),
+          )
+          as _i8.Future<_i4.TokenResponse>);
+
+  @override
+  _i8.Future<_i4.TokenResponse> googleIdpLogin({
+    required String? idToken,
+    required String? identityProviderId,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(#googleIdpLogin, [], {
+              #idToken: idToken,
+              #identityProviderId: identityProviderId,
+            }),
+            returnValue: _i8.Future<_i4.TokenResponse>.value(
+              _FakeTokenResponse_9(
+                this,
+                Invocation.method(#googleIdpLogin, [], {
+                  #idToken: idToken,
                   #identityProviderId: identityProviderId,
                 }),
               ),
@@ -916,4 +944,22 @@ class MockAppleSignInWrapper extends _i1.Mock
             ),
           )
           as _i8.Future<_i6.AuthorizationCredentialAppleID>);
+}
+
+/// A class which mocks [GoogleSignInWrapper].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockGoogleSignInWrapper extends _i1.Mock
+    implements _i12.GoogleSignInWrapper {
+  MockGoogleSignInWrapper() {
+    _i1.throwOnMissingStub(this);
+  }
+
+  @override
+  _i8.Future<String?> getIdToken() =>
+      (super.noSuchMethod(
+            Invocation.method(#getIdToken, []),
+            returnValue: _i8.Future<String?>.value(),
+          )
+          as _i8.Future<String?>);
 }
