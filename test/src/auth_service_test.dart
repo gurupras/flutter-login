@@ -712,7 +712,7 @@ void main() {
         );
 
         test(
-          'background refresh bypasses token validity check and notifies authRedirectStream',
+          'background refresh bypasses token validity check and publishes the new token',
           () async {
             // Use a token expiring in 14 min: _scheduleTokenRefresh immediately
             // calls _attemptTokenRefresh (refresh window = exp-15min is in the
@@ -770,6 +770,8 @@ void main() {
 
             final redirectEvents = <bool>[];
             authService.authRedirectStream.listen(redirectEvents.add);
+            final tokenEvents = <String>[];
+            authService.accessTokenStream.listen(tokenEvents.add);
 
             await authService.init();
             await authService.checkLoginStatus();
@@ -781,8 +783,15 @@ void main() {
             verify(
               mockFusionAuthClient.oauthRefreshTokenGrant('current_refresh_token'),
             ).called(1);
-            expect(redirectEvents, contains(true));
+            // The refreshed token is published so cached-token consumers (API
+            // clients, socket auth) can re-arm — without this they keep using
+            // the token they were handed at login and start 401ing at expiry.
+            expect(tokenEvents, contains('refreshed_access_token'));
             expect(authService.currentAccessToken, 'refreshed_access_token');
+            // A silent refresh is not a redirect: signalling authRedirectStream
+            // here would make AuthBloc re-run AuthCheckStatus and bounce every
+            // listener through AuthLoading roughly once an hour.
+            expect(redirectEvents, isEmpty);
           },
         );
 

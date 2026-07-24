@@ -60,6 +60,14 @@ class MockAuthService extends _i1.Mock implements _i4.AuthService {
           as _i5.Stream<bool>);
 
   @override
+  _i5.Stream<String> get accessTokenStream =>
+      (super.noSuchMethod(
+            Invocation.getter(#accessTokenStream),
+            returnValue: _i5.Stream<String>.empty(),
+          )
+          as _i5.Stream<String>);
+
+  @override
   _i3.LoginConfig get config =>
       (super.noSuchMethod(
             Invocation.getter(#config),

@@ -13,11 +13,19 @@ import 'auth_bloc_test.mocks.dart';
 void main() {
   group('AuthBloc', () {
     late MockAuthService mockAuthService;
+    late StreamController<String> accessTokenController;
 
     setUp(() {
       mockAuthService = MockAuthService();
       when(mockAuthService.authRedirectStream)
           .thenAnswer((_) => const Stream.empty());
+      accessTokenController = StreamController<String>.broadcast();
+      when(mockAuthService.accessTokenStream)
+          .thenAnswer((_) => accessTokenController.stream);
+    });
+
+    tearDown(() async {
+      await accessTokenController.close();
     });
 
     final mockDecodedToken = DecodedAccessToken(sub: 'test_sub');
@@ -255,6 +263,48 @@ void main() {
       verify: (_) {
         verifyNever(mockAuthService.checkLoginStatus());
       },
+    );
+
+    // Regression: AuthService refreshes the access token silently on a timer
+    // ahead of expiry. Before this, the refreshed token never left the service —
+    // the bloc kept advertising the token emitted at login, so consumers that
+    // cached it (API clients, socket auth) went on using an expired token and
+    // every authenticated request started failing with 401.
+    blocTest<AuthBloc, AuthState>(
+      're-emits AuthAuthenticated with the new token when accessTokenStream emits',
+      build: () {
+        when(mockAuthService.currentAccessToken)
+            .thenReturn('refreshed_access_token');
+        when(mockAuthService.currentIdToken)
+            .thenReturn('refreshed_id_token');
+        when(mockAuthService.decodedAccessToken).thenReturn(mockDecodedToken);
+        return AuthBloc(authService: mockAuthService);
+      },
+      act: (_) => accessTokenController.add('refreshed_access_token'),
+      // No AuthLoading: a background refresh must not bounce the app back
+      // through a loading state.
+      expect: () => [
+        AuthAuthenticated(
+          accessToken: 'refreshed_access_token',
+          idToken: 'refreshed_id_token',
+          decodedAccessToken: mockDecodedToken,
+        )
+      ],
+      verify: (_) {
+        // Straight from the service's current token — no storage round-trip.
+        verifyNever(mockAuthService.checkLoginStatus());
+      },
+    );
+
+    blocTest<AuthBloc, AuthState>(
+      'ignores accessTokenStream emissions once the token is gone',
+      build: () {
+        when(mockAuthService.currentAccessToken).thenReturn(null);
+        when(mockAuthService.decodedAccessToken).thenReturn(null);
+        return AuthBloc(authService: mockAuthService);
+      },
+      act: (_) => accessTokenController.add('stale_token'),
+      expect: () => [],
     );
   });
 }

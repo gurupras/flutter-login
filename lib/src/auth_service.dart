@@ -117,6 +117,20 @@ class AuthService {
       StreamController<bool>.broadcast();
   Stream<bool> get authRedirectStream => _authRedirectController.stream;
 
+  final StreamController<String> _accessTokenController =
+      StreamController<String>.broadcast();
+
+  /// Emits every time a new access token is obtained — initial login, signup,
+  /// IdP/redirect exchange, and (critically) the silent background refresh
+  /// driven by [_scheduleTokenRefresh].
+  ///
+  /// Consumers that cache the token (API clients, socket auth) MUST listen to
+  /// this rather than reading [currentAccessToken] once at login. Without it a
+  /// long-lived process keeps using the token it was handed at startup, which
+  /// begins failing with 401 as soon as that token expires — even though this
+  /// service has already refreshed it behind the scenes.
+  Stream<String> get accessTokenStream => _accessTokenController.stream;
+
   String? get currentAccessToken => _currentAccessToken;
   String? get currentIdToken => _currentIdToken;
   dynamic get lastLoginCredentials => _currentLastLoginCredentials;
@@ -202,7 +216,17 @@ class AuthService {
 
   void dispose() {
     _authRedirectController.close();
+    _accessTokenController.close();
     _refreshTokenTimer?.cancel();
+  }
+
+  /// Publish a newly-obtained access token to [accessTokenStream].
+  ///
+  /// Guarded because a scheduled refresh can land after [dispose] — adding to
+  /// a closed controller throws.
+  void _publishAccessToken(String token) {
+    if (_accessTokenController.isClosed) return;
+    _accessTokenController.add(token);
   }
 
   Future<void> _processAuthRedirect(Uri uri) async {
@@ -567,6 +591,7 @@ class AuthService {
     await _secureStorage.write(key: _userIDKey, value: userID);
 
     _scheduleTokenRefresh();
+    _publishAccessToken(response.accessToken);
   }
 
   Future<void> _storeTokens(TokenResponse tokens) async {
@@ -599,6 +624,7 @@ class AuthService {
     }
 
     _scheduleTokenRefresh();
+    _publishAccessToken(tokens.accessToken);
   }
 
   void _scheduleTokenRefresh() {
@@ -661,8 +687,14 @@ class AuthService {
         log.w('No refresh credentials available for proactive refresh.');
         return;
       }
+      // _storeTokens publishes to accessTokenStream, which is what propagates
+      // the new token to listeners. Deliberately NOT signalling
+      // _authRedirectController here: this is a silent background refresh, not
+      // a completed redirect, and routing it through the redirect stream makes
+      // AuthBloc re-run AuthCheckStatus — bouncing every listener through
+      // AuthLoading (and a redundant secure-storage round-trip) roughly once an
+      // hour, for a token the service has already updated in place.
       await _storeTokens(newTokens);
-      _authRedirectController.add(true);
     } catch (e) {
       log.e('Proactive token refresh failed: $e');
     } finally {

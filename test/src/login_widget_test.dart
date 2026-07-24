@@ -34,6 +34,9 @@ void main() {
     when(
       mockAuthService.authRedirectStream,
     ).thenAnswer((_) => const Stream.empty());
+    when(
+      mockAuthService.accessTokenStream,
+    ).thenAnswer((_) => const Stream.empty());
     when(mockAuthService.config).thenReturn(
       buildConfig(
         appleIdentityProviderID: appleIdentityProviderID,
