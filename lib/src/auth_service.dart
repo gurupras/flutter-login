@@ -152,6 +152,17 @@ class AuthService {
   Timer? _refreshTokenTimer;
   bool _isRefreshing = false;
 
+  // Self-healing retry for the proactive refresh. When a scheduled refresh
+  // fails (transient network error, device was Dozing at fire time, …) we do
+  // NOT give up — a single missed refresh would otherwise leave the token
+  // permanently stale for the life of the process. Instead we re-arm a bounded,
+  // exponential backoff and keep trying until one succeeds. Reset on success
+  // (via [_scheduleTokenRefresh]) and cancelled in [dispose]/[logout].
+  Timer? _refreshRetryTimer;
+  static const Duration _initialRefreshRetryDelay = Duration(seconds: 30);
+  static const Duration _maxRefreshRetryDelay = Duration(minutes: 5);
+  Duration _nextRefreshRetryDelay = _initialRefreshRetryDelay;
+
   final LibloginNative _libloginNative;
   final AppleSignInWrapper _appleSignIn;
   final GoogleSignInWrapper _googleSignIn;
@@ -218,6 +229,7 @@ class AuthService {
     _authRedirectController.close();
     _accessTokenController.close();
     _refreshTokenTimer?.cancel();
+    _refreshRetryTimer?.cancel();
   }
 
   /// Publish a newly-obtained access token to [accessTokenStream].
@@ -554,6 +566,8 @@ class AuthService {
     _currentRefreshToken = null;
     _currentLastLoginCredentials = null;
     _refreshTokenTimer?.cancel();
+    _refreshRetryTimer?.cancel();
+    _nextRefreshRetryDelay = _initialRefreshRetryDelay;
   }
 
   Future<void> _storeLoginResponse(LoginResponse response) async {
@@ -629,6 +643,11 @@ class AuthService {
 
   void _scheduleTokenRefresh() {
     _refreshTokenTimer?.cancel();
+    // A (re)schedule means we hold a fresh, valid token again: tear down any
+    // pending failure-retry and reset the backoff so a future outage starts
+    // from the short delay.
+    _refreshRetryTimer?.cancel();
+    _nextRefreshRetryDelay = _initialRefreshRetryDelay;
 
     if (_currentAccessToken == null) {
       return;
@@ -696,10 +715,37 @@ class AuthService {
       // hour, for a token the service has already updated in place.
       await _storeTokens(newTokens);
     } catch (e) {
+      // Do NOT swallow the failure: a single missed refresh would strand the
+      // token stale for the rest of the process. Re-arm a bounded backoff so a
+      // transient outage recovers on its own. (On success, _storeTokens ->
+      // _scheduleTokenRefresh resets this state and restores the normal timer.)
       log.e('Proactive token refresh failed: $e');
+      _scheduleRefreshRetry();
     } finally {
       _isRefreshing = false;
     }
+  }
+
+  /// Re-arms a proactive-refresh attempt after a failure, using an
+  /// exponential-ish backoff capped at [_maxRefreshRetryDelay]. Cancels any
+  /// existing retry timer first so we never leak concurrent timers.
+  void _scheduleRefreshRetry() {
+    _refreshRetryTimer?.cancel();
+
+    final Duration delay = _nextRefreshRetryDelay;
+    log.w(
+      'Scheduling proactive token refresh retry in ${delay.inSeconds} seconds.',
+    );
+    _refreshRetryTimer = Timer(delay, () {
+      log.i('Retrying proactive token refresh.');
+      _attemptTokenRefresh();
+    });
+
+    // Escalate for the next failure, capped.
+    final int nextMs = delay.inMilliseconds * 2;
+    _nextRefreshRetryDelay = nextMs >= _maxRefreshRetryDelay.inMilliseconds
+        ? _maxRefreshRetryDelay
+        : Duration(milliseconds: nextMs);
   }
 
   Future<bool> checkLoginStatus() async {

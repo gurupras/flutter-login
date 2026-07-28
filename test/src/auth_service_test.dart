@@ -882,6 +882,236 @@ void main() {
         );
       });
 
+      group('proactive refresh self-healing retry', () {
+        // Drives its own local FakeAsync so the retry/refresh Timers are
+        // created in a fake zone and can be advanced deterministically. A
+        // token expiring in 14 min makes _scheduleTokenRefresh fire
+        // _attemptTokenRefresh immediately (refresh window exp-15min is in the
+        // past), the same trick the "background refresh" test uses.
+        void stubNearlyExpiredSession() {
+          final tokenExp = DateTime.now().add(const Duration(minutes: 14));
+          when(
+            mockSecureStorage.read(key: 'accessToken'),
+          ).thenAnswer((_) async => 'nearly_expired_token');
+          when(
+            mockSecureStorage.read(key: 'refreshToken'),
+          ).thenAnswer((_) async => 'current_refresh_token');
+          when(
+            mockSecureStorage.read(key: 'lastLoginCredentials'),
+          ).thenAnswer((_) async => null);
+          when(
+            mockSecureStorage.read(key: 'userID'),
+          ).thenAnswer((_) async => 'user123');
+          when(
+            mockSecureStorage.read(key: 'deviceID'),
+          ).thenAnswer((_) async => 'device-id');
+          when(
+            mockJwtDecoder.isExpired('nearly_expired_token'),
+          ).thenReturn(false);
+          when(mockJwtDecoder.decode('nearly_expired_token')).thenReturn({
+            'sub': 'user123',
+            'exp': tokenExp.millisecondsSinceEpoch ~/ 1000,
+          });
+          when(
+            mockSecureStorage.write(
+              key: anyNamed('key'),
+              value: anyNamed('value'),
+            ),
+          ).thenAnswer((_) async => {});
+          when(
+            mockSecureStorage.delete(key: anyNamed('key')),
+          ).thenAnswer((_) async => {});
+        }
+
+        test(
+          'a failed refresh schedules a retry that later succeeds and '
+          'publishes the new token',
+          () {
+            fakeAsync((fa) {
+              stubNearlyExpiredSession();
+
+              final newTokenResponse = TokenResponse(
+                accessToken: 'refreshed_access_token',
+                expiresIn: 3600,
+                tokenType: 'Bearer',
+                userID: 'user123',
+                refreshToken: 'new_refresh_token',
+              );
+              when(mockJwtDecoder.decode('refreshed_access_token')).thenReturn({
+                'sub': 'user123',
+                'exp':
+                    DateTime.now()
+                        .add(const Duration(hours: 1))
+                        .millisecondsSinceEpoch ~/
+                    1000,
+              });
+
+              // First proactive attempt fails (transient); the retry succeeds.
+              var calls = 0;
+              when(
+                mockFusionAuthClient.oauthRefreshTokenGrant(
+                  'current_refresh_token',
+                ),
+              ).thenAnswer((_) async {
+                calls++;
+                if (calls == 1) {
+                  throw 'transient network error';
+                }
+                return newTokenResponse;
+              });
+
+              final tokenEvents = <String>[];
+              authService.accessTokenStream.listen(tokenEvents.add);
+
+              authService.init();
+              fa.flushMicrotasks();
+              authService.checkLoginStatus();
+              fa.flushMicrotasks();
+
+              // Immediate attempt fired and failed; nothing published yet.
+              expect(calls, 1);
+              expect(tokenEvents, isEmpty);
+              expect(authService.currentAccessToken, 'nearly_expired_token');
+
+              // Retry is armed at the initial 30s backoff.
+              fa.elapse(const Duration(seconds: 30));
+              fa.flushMicrotasks();
+
+              expect(calls, 2);
+              expect(tokenEvents, contains('refreshed_access_token'));
+              expect(
+                authService.currentAccessToken,
+                'refreshed_access_token',
+              );
+
+              authService.dispose();
+            });
+          },
+        );
+
+        test(
+          'repeated failures keep retrying and respect the backoff cap',
+          () {
+            fakeAsync((fa) {
+              stubNearlyExpiredSession();
+
+              var calls = 0;
+              when(
+                mockFusionAuthClient.oauthRefreshTokenGrant(
+                  'current_refresh_token',
+                ),
+              ).thenAnswer((_) async {
+                calls++;
+                throw 'always fails';
+              });
+
+              authService.init();
+              fa.flushMicrotasks();
+              authService.checkLoginStatus();
+              fa.flushMicrotasks();
+
+              // Immediate attempt (call 1), retry armed at 30s.
+              expect(calls, 1);
+
+              // Backoff escalates 30s, 60s, 120s, 240s, then caps at 5 min.
+              fa.elapse(const Duration(seconds: 30));
+              fa.flushMicrotasks();
+              expect(calls, 2);
+
+              fa.elapse(const Duration(seconds: 60));
+              fa.flushMicrotasks();
+              expect(calls, 3);
+
+              fa.elapse(const Duration(seconds: 120));
+              fa.flushMicrotasks();
+              expect(calls, 4);
+
+              fa.elapse(const Duration(seconds: 240));
+              fa.flushMicrotasks();
+              expect(calls, 5);
+
+              // Now capped: the next delay is 5 min.
+              fa.elapse(const Duration(minutes: 5));
+              fa.flushMicrotasks();
+              expect(calls, 6);
+
+              // Cap holds — still 5 min, no faster. Just short of it: nothing.
+              fa.elapse(const Duration(seconds: 299));
+              fa.flushMicrotasks();
+              expect(calls, 6);
+              fa.elapse(const Duration(seconds: 1));
+              fa.flushMicrotasks();
+              expect(calls, 7);
+
+              authService.dispose();
+            });
+          },
+        );
+
+        test('dispose cancels the pending retry timer', () {
+          fakeAsync((fa) {
+            stubNearlyExpiredSession();
+
+            var calls = 0;
+            when(
+              mockFusionAuthClient.oauthRefreshTokenGrant(
+                'current_refresh_token',
+              ),
+            ).thenAnswer((_) async {
+              calls++;
+              throw 'always fails';
+            });
+
+            authService.init();
+            fa.flushMicrotasks();
+            authService.checkLoginStatus();
+            fa.flushMicrotasks();
+
+            expect(calls, 1); // immediate attempt; retry armed at 30s
+
+            authService.dispose();
+
+            // No retry may fire after dispose.
+            fa.elapse(const Duration(minutes: 10));
+            fa.flushMicrotasks();
+            expect(calls, 1);
+          });
+        });
+
+        test('logout cancels the pending retry timer', () {
+          fakeAsync((fa) {
+            stubNearlyExpiredSession();
+
+            var calls = 0;
+            when(
+              mockFusionAuthClient.oauthRefreshTokenGrant(
+                'current_refresh_token',
+              ),
+            ).thenAnswer((_) async {
+              calls++;
+              throw 'always fails';
+            });
+
+            authService.init();
+            fa.flushMicrotasks();
+            authService.checkLoginStatus();
+            fa.flushMicrotasks();
+
+            expect(calls, 1); // immediate attempt; retry armed at 30s
+
+            authService.logout();
+            fa.flushMicrotasks();
+
+            // No retry may fire after logout.
+            fa.elapse(const Duration(minutes: 10));
+            fa.flushMicrotasks();
+            expect(calls, 1);
+
+            authService.dispose();
+          });
+        });
+      });
+
       group('initiateGoogleLogin', () {
         test('initiates Google login successfully', () async {
           when(
