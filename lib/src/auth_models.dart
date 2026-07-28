@@ -8,6 +8,13 @@ class TokenResponse {
   final String tokenType;
   final String? userID;
 
+  /// The server-side `/login/refresh-tokens` path ROTATES this credential on
+  /// every call and returns the NEW one here. It MUST be persisted and used on
+  /// the next refresh, or FusionAuth rejects the stale one with
+  /// `refresh_token_not_found`. Null on the direct FusionAuth token endpoint
+  /// (which uses a reusable refresh_token instead).
+  final dynamic lastLoginCredentials;
+
   TokenResponse({
     required this.accessToken,
     required this.expiresIn,
@@ -15,6 +22,7 @@ class TokenResponse {
     this.refreshToken,
     required this.tokenType,
     this.userID,
+    this.lastLoginCredentials,
   });
 
   factory TokenResponse.fromJson(Map<String, dynamic> json) {
@@ -25,6 +33,7 @@ class TokenResponse {
       refreshToken: json['refresh_token'] as String?,
       tokenType: (json['token_type'] as String?) ?? 'Bearer',
       userID: json['userId'] as String?,
+      lastLoginCredentials: json['lastLoginCredentials'],
     );
   }
 
@@ -36,6 +45,7 @@ class TokenResponse {
       'refresh_token': refreshToken,
       'token_type': tokenType,
       'userId': userID,
+      'lastLoginCredentials': lastLoginCredentials,
     };
   }
 }

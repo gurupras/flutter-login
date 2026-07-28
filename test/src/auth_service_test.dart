@@ -477,6 +477,56 @@ void main() {
         });
 
         test(
+          'server-side refresh: the ROTATED lastLoginCredentials is adopted + '
+          'persisted (regression: refresh_token_not_found on 2nd refresh)',
+          () async {
+            // No OAuth refresh token → the server-side /login/refresh-tokens
+            // (lastLoginCredentials) path is used.
+            when(mockSecureStorage.read(key: 'accessToken'))
+                .thenAnswer((_) async => 'expired_access_token');
+            when(mockSecureStorage.read(key: 'refreshToken'))
+                .thenAnswer((_) async => null);
+            when(mockSecureStorage.read(key: 'lastLoginCredentials'))
+                .thenAnswer((_) async => 'old_llc');
+            when(mockSecureStorage.read(key: 'userID'))
+                .thenAnswer((_) async => 'user123');
+            when(mockSecureStorage.read(key: 'deviceID'))
+                .thenAnswer((_) async => 'device-id');
+            when(mockJwtDecoder.isExpired('expired_access_token'))
+                .thenReturn(true);
+
+            final rotated = TokenResponse(
+              accessToken: 'new_access',
+              expiresIn: 3600,
+              tokenType: 'Bearer',
+              userID: 'user123',
+              refreshToken: null, // server path omits the OAuth refresh token
+              lastLoginCredentials: 'NEW_llc', // ROTATED — must be used next time
+            );
+            when(mockFusionAuthClient.refreshTokenGrant('old_llc'))
+                .thenAnswer((_) async => rotated);
+            when(mockSecureStorage.write(
+              key: anyNamed('key'),
+              value: anyNamed('value'),
+            )).thenAnswer((_) async => {});
+
+            await authService.init();
+            final result = await authService.checkLoginStatus();
+            async.elapse(const Duration(hours: 1));
+
+            expect(result, isTrue);
+            verify(mockFusionAuthClient.refreshTokenGrant('old_llc')).called(1);
+            // The rotated credential must be adopted in memory AND persisted so
+            // the NEXT refresh doesn't re-send the consumed 'old_llc'.
+            expect(authService.lastLoginCredentials, 'NEW_llc');
+            verify(mockSecureStorage.write(
+              key: 'lastLoginCredentials',
+              value: 'NEW_llc',
+            )).called(1);
+          },
+        );
+
+        test(
           'returns true if access token is expired and refreshes via OAuth refresh token',
           () async {
             when(

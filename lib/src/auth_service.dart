@@ -611,7 +611,13 @@ class AuthService {
   Future<void> _storeTokens(TokenResponse tokens) async {
     _currentAccessToken = tokens.accessToken;
     _currentIdToken = tokens.idToken;
-    _currentRefreshToken = tokens.refreshToken;
+    // Only adopt a refresh token when the response actually carries one. A
+    // refresh response may omit it (the server-side /login/refresh-tokens path
+    // returns a rotated lastLoginCredentials instead), and nulling a good
+    // in-memory refresh token would strand the next refresh on the wrong path.
+    if (tokens.refreshToken != null) {
+      _currentRefreshToken = tokens.refreshToken;
+    }
 
     await _secureStorage.write(key: _accessTokenKey, value: tokens.accessToken);
     if (tokens.idToken != null) {
@@ -625,6 +631,17 @@ class AuthService {
         key: _refreshTokenKey,
         value: tokens.refreshToken,
       );
+    }
+    // Persist the ROTATED lastLoginCredentials so the next server-side refresh
+    // uses the fresh credential. Without this the second refresh re-sends a
+    // consumed one and FusionAuth answers refresh_token_not_found. Mirrors
+    // _storeLoginResponse.
+    if (tokens.lastLoginCredentials != null) {
+      _currentLastLoginCredentials = tokens.lastLoginCredentials;
+      final value = tokens.lastLoginCredentials is String
+          ? tokens.lastLoginCredentials as String
+          : json.encode(tokens.lastLoginCredentials);
+      await _secureStorage.write(key: _lastLoginCredentialsKey, value: value);
     }
 
     String? userID = tokens.userID;
