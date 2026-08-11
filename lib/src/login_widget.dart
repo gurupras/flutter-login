@@ -6,6 +6,21 @@ import 'package:flutter_login/flutter_login.dart';
 import 'package:flutter_vector_icons/flutter_vector_icons.dart';
 import 'package:liblogin/src/auth_bloc/auth_bloc.dart';
 
+/// Returned by a social-provider callback when sign-in did not complete — the
+/// user dismissed the provider sheet, or the provider itself failed.
+///
+/// flutter_login treats a `null` return as "the user is now signed in" and runs
+/// its post-login transition on the strength of it. Returning this sentinel
+/// instead keeps that transition from firing, while
+/// [LoginProvider.errorsToExcludeFromErrorMessage] suppresses the error toast
+/// so a deliberate cancel stays silent.
+const String _signInNotCompleted = 'liblogin:sign-in-not-completed';
+
+/// Shown when the external browser could not be launched for the web OAuth
+/// flow. Unlike [_signInNotCompleted] this is a genuine failure the user needs
+/// to see, so it is not excluded from the error toast.
+const String _couldNotOpenSignIn = 'Could not open the sign-in page.';
+
 class LoginPage extends StatelessWidget {
   final String title;
   final bool enableEmailPassword;
@@ -45,9 +60,18 @@ class LoginPage extends StatelessWidget {
     this.footer,
     this.hideProvidersTitle = false,
   }) : assert(
+         // A null [socialProviders] means "use the built-in defaults", which
+         // always include Google, so it can never strand the user on a login
+         // page with no way in. Only an explicitly empty list can do that, and
+         // that is what this guards against — requiring non-null here would
+         // force callers who just want the defaults to restate them.
+         // ignore: prefer_is_not_empty — `isNotEmpty` is not const-evaluable,
+         // and this assert runs in a const constructor.
          enableEmailPassword ||
-             (socialProviders != null && socialProviders.length > 0),
-         'socialProviders must be non-empty when enableEmailPassword is false.',
+             socialProviders == null ||
+             socialProviders.length > 0,
+         'socialProviders must be non-empty when email/password login is '
+         'disabled. Pass null to use the default providers instead.',
        ),
        assert(
          logo == null || logo is String || logo is ImageProvider,
@@ -60,25 +84,38 @@ class LoginPage extends StatelessWidget {
     // it holds an [AuthService] reference. Route through it so we don't
     // assume an independent Provider<AuthService> exists in the widget tree.
     final authService = context.read<AuthBloc>().authService;
+    // Prefer the native google_sign_in sheet on iOS/Android; fall back to the
+    // web OAuth flow everywhere else (web/desktop) or when the consumer opts
+    // out via LoginConfig.useNativeGoogle. Resolved out here rather than inside
+    // the callback because it also decides whether the button may animate.
+    final useNativeGoogle =
+        authService.config.useNativeGoogle &&
+        !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.iOS ||
+            defaultTargetPlatform == TargetPlatform.android);
     final providers = <LoginProvider>[
       LoginProvider(
         icon: FontAwesome.google,
         label: 'Google',
+        // The native sheet resolves fully inside the callback, so success there
+        // is real and flutter_login's post-login transition is truthful.
+        //
+        // The web flow is not: it hands off to an external browser and returns
+        // as soon as that browser has launched, with the outcome only arriving
+        // later via [AuthService.authRedirectStream]. No point in that callback
+        // can report success honestly, so the button stays unanimated —
+        // flutter_login runs its transition off a successful callback, and
+        // running it there would walk the user into the app before they had
+        // signed in.
+        animated: useNativeGoogle,
+        errorsToExcludeFromErrorMessage: const [_signInNotCompleted],
         callback: () async {
-          // Prefer the native google_sign_in sheet on iOS/Android; fall back to
-          // the web OAuth flow everywhere else (web/desktop) or when the
-          // consumer opts out via LoginConfig.useNativeGoogle.
-          final useNative =
-              authService.config.useNativeGoogle &&
-              !kIsWeb &&
-              (defaultTargetPlatform == TargetPlatform.iOS ||
-                  defaultTargetPlatform == TargetPlatform.android);
-          if (useNative) {
-            await authService.initiateGoogleNativeLogin();
-          } else {
-            await authService.initiateGoogleLogin();
+          if (useNativeGoogle) {
+            final signedIn = await authService.initiateGoogleNativeLogin();
+            return signedIn ? null : _signInNotCompleted;
           }
-          return null;
+          final launched = await authService.initiateGoogleLogin();
+          return launched ? null : _couldNotOpenSignIn;
         },
       ),
     ];
@@ -87,9 +124,14 @@ class LoginPage extends StatelessWidget {
         LoginProvider(
           button: Buttons.apple,
           label: 'Apple',
+          // Sign in with Apple is native and resolves fully inside the
+          // callback, so success here is real and the post-login transition is
+          // truthful. A cancelled or failed attempt must still report failure
+          // rather than null, or flutter_login animates away regardless.
+          errorsToExcludeFromErrorMessage: const [_signInNotCompleted],
           callback: () async {
-            await authService.initiateAppleLogin();
-            return null;
+            final signedIn = await authService.initiateAppleLogin();
+            return signedIn ? null : _signInNotCompleted;
           },
         ),
       );
