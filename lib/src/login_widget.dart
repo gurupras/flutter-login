@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_login/flutter_login.dart';
-import 'package:flutter_vector_icons/flutter_vector_icons.dart';
 import 'package:liblogin/src/auth_bloc/auth_bloc.dart';
 
 /// Returned by a social-provider callback when sign-in did not complete — the
@@ -95,18 +94,10 @@ class LoginPage extends StatelessWidget {
             defaultTargetPlatform == TargetPlatform.android);
     final providers = <LoginProvider>[
       LoginProvider(
-        icon: FontAwesome.google,
-        label: 'Google',
-        // The native sheet resolves fully inside the callback, so success there
-        // is real and flutter_login's post-login transition is truthful.
-        //
-        // The web flow is not: it hands off to an external browser and returns
-        // as soon as that browser has launched, with the outcome only arriving
-        // later via [AuthService.authRedirectStream]. No point in that callback
-        // can report success honestly, so the button stays unanimated —
-        // flutter_login runs its transition off a successful callback, and
-        // running it there would walk the user into the app before they had
-        // signed in.
+        // A full Google row keeps the brand and action together; native-only
+        // animation preserves the upstream web-flow completion behavior.
+        button: Buttons.google,
+        label: 'Continue with Google',
         animated: useNativeGoogle,
         errorsToExcludeFromErrorMessage: const [_signInNotCompleted],
         callback: () async {

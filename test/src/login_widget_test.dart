@@ -82,7 +82,8 @@ void main() {
       );
       expect(flutterLogin.hideUserNamePasswordLogin, isFalse);
       expect(flutterLogin.loginProviders.length, 1);
-      expect(flutterLogin.loginProviders.first.label, 'Google');
+      expect(flutterLogin.loginProviders.first.label, 'Continue with Google');
+      expect(flutterLogin.loginProviders.first.button, Buttons.google);
     },
   );
 
@@ -94,28 +95,24 @@ void main() {
         tester,
         const LoginPage(title: 'Test App'),
       );
-      expect(
-        flutterLogin.loginProviders.map((p) => p.label),
-        ['Google', 'Apple'],
-      );
+      expect(flutterLogin.loginProviders.map((p) => p.label), [
+        'Continue with Google',
+        'Apple',
+      ]);
       expect(flutterLogin.loginProviders.last.button, Buttons.apple);
     },
   );
 
-  testWidgets(
-    'omits the Apple provider when appleIdentityProviderID is null',
-    (tester) async {
-      // Default stub from setUp already leaves appleIdentityProviderID null.
-      final flutterLogin = await capture(
-        tester,
-        const LoginPage(title: 'Test App'),
-      );
-      expect(
-        flutterLogin.loginProviders.any((p) => p.label == 'Apple'),
-        isFalse,
-      );
-    },
-  );
+  testWidgets('omits the Apple provider when appleIdentityProviderID is null', (
+    tester,
+  ) async {
+    // Default stub from setUp already leaves appleIdentityProviderID null.
+    final flutterLogin = await capture(
+      tester,
+      const LoginPage(title: 'Test App'),
+    );
+    expect(flutterLogin.loginProviders.any((p) => p.label == 'Apple'), isFalse);
+  });
 
   testWidgets(
     'forwards hideUserNamePasswordLogin when enableEmailPassword is false',
@@ -160,10 +157,10 @@ void main() {
         ],
       ),
     );
-    expect(
-      flutterLogin.loginProviders.map((p) => p.label),
-      ['Apple', 'GitHub'],
-    );
+    expect(flutterLogin.loginProviders.map((p) => p.label), [
+      'Apple',
+      'GitHub',
+    ]);
   });
 
   testWidgets('forwards termsOfService to FlutterLogin', (tester) async {
@@ -197,7 +194,7 @@ void main() {
         const LoginPage(title: 'Test App'),
       );
       final google = flutterLogin.loginProviders.firstWhere(
-        (p) => p.label == 'Google',
+        (p) => p.label == 'Continue with Google',
       );
       await google.callback();
       verify(mockAuthService.initiateGoogleNativeLogin()).called(1);
@@ -209,15 +206,13 @@ void main() {
     'default Google provider uses web flow when useNativeGoogle is false',
     (tester) async {
       stubAuthService(useNativeGoogle: false);
-      when(
-        mockAuthService.initiateGoogleLogin(),
-      ).thenAnswer((_) async => true);
+      when(mockAuthService.initiateGoogleLogin()).thenAnswer((_) async => true);
       final flutterLogin = await capture(
         tester,
         const LoginPage(title: 'Test App'),
       );
       final google = flutterLogin.loginProviders.firstWhere(
-        (p) => p.label == 'Google',
+        (p) => p.label == 'Continue with Google',
       );
       await google.callback();
       verify(mockAuthService.initiateGoogleLogin()).called(1);
@@ -245,20 +240,22 @@ void main() {
       return flutterLogin.loginProviders.firstWhere((p) => p.label == label);
     }
 
-    testWidgets('the native Google button may animate — it resolves in-callback', (
-      tester,
-    ) async {
-      final google = await providerNamed(tester, 'Google');
-      expect(google.animated, isTrue);
-    });
+    testWidgets(
+      'the native Google button may animate — it resolves in-callback',
+      (tester) async {
+        final google = await providerNamed(tester, 'Continue with Google');
+        expect(google.animated, isTrue);
+      },
+    );
 
-    testWidgets('the web Google button does not animate — it resolves out of band', (
-      tester,
-    ) async {
-      stubAuthService(useNativeGoogle: false);
-      final google = await providerNamed(tester, 'Google');
-      expect(google.animated, isFalse);
-    });
+    testWidgets(
+      'the web Google button does not animate — it resolves out of band',
+      (tester) async {
+        stubAuthService(useNativeGoogle: false);
+        final google = await providerNamed(tester, 'Continue with Google');
+        expect(google.animated, isFalse);
+      },
+    );
 
     testWidgets('native Google reports no error when sign-in succeeds', (
       tester,
@@ -266,7 +263,7 @@ void main() {
       when(
         mockAuthService.initiateGoogleNativeLogin(),
       ).thenAnswer((_) async => true);
-      final google = await providerNamed(tester, 'Google');
+      final google = await providerNamed(tester, 'Continue with Google');
       expect(await google.callback(), isNull);
     });
 
@@ -276,7 +273,7 @@ void main() {
       when(
         mockAuthService.initiateGoogleNativeLogin(),
       ).thenAnswer((_) async => false);
-      final google = await providerNamed(tester, 'Google');
+      final google = await providerNamed(tester, 'Continue with Google');
       final error = await google.callback();
       // Non-null so flutter_login does not animate the user into the app...
       expect(error, isNotNull);
@@ -289,7 +286,7 @@ void main() {
     ) async {
       stubAuthService(useNativeGoogle: false);
       when(mockAuthService.initiateGoogleLogin()).thenAnswer((_) async => true);
-      final google = await providerNamed(tester, 'Google');
+      final google = await providerNamed(tester, 'Continue with Google');
       expect(await google.callback(), isNull);
     });
 
@@ -297,8 +294,10 @@ void main() {
       tester,
     ) async {
       stubAuthService(useNativeGoogle: false);
-      when(mockAuthService.initiateGoogleLogin()).thenAnswer((_) async => false);
-      final google = await providerNamed(tester, 'Google');
+      when(
+        mockAuthService.initiateGoogleLogin(),
+      ).thenAnswer((_) async => false);
+      final google = await providerNamed(tester, 'Continue with Google');
       final error = await google.callback();
       expect(error, isNotNull);
       // A genuine failure the user must see, so it is not suppressed.
@@ -324,19 +323,13 @@ void main() {
     });
   });
 
-  test(
-    'asserts that an explicitly empty socialProviders list is rejected when '
-    'email/password is disabled',
-    () {
-      expect(
-        () => LoginPage(
-          enableEmailPassword: false,
-          socialProviders: const [],
-        ),
-        throwsA(isA<AssertionError>()),
-      );
-    },
-  );
+  test('asserts that an explicitly empty socialProviders list is rejected when '
+      'email/password is disabled', () {
+    expect(
+      () => LoginPage(enableEmailPassword: false, socialProviders: const []),
+      throwsA(isA<AssertionError>()),
+    );
+  });
 
   test(
     'allows a null socialProviders with email/password disabled — the default '
@@ -356,10 +349,10 @@ void main() {
         const LoginPage(title: 'Test App', enableEmailPassword: false),
       );
       expect(flutterLogin.hideUserNamePasswordLogin, isTrue);
-      expect(
-        flutterLogin.loginProviders.map((p) => p.label),
-        ['Google', 'Apple'],
-      );
+      expect(flutterLogin.loginProviders.map((p) => p.label), [
+        'Continue with Google',
+        'Apple',
+      ]);
     },
   );
 }
