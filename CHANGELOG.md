@@ -1,3 +1,15 @@
+## 0.18.2
+
+* **Fix: background token refresh falls back to the server-side refresh.** A
+  native-form login stores both a refresh token and `lastLoginCredentials`. The
+  proactive refresh only tried FusionAuth's public refresh-token grant whenever
+  a refresh token existed, and a confidential client rejects that grant with
+  `invalid_client`. Every scheduled refresh and retry failed the same way, and
+  the access token expired in place, so an app left open for about an hour
+  started getting 401s. The proactive refresh now falls back to
+  `/login/refresh-tokens` with `lastLoginCredentials`, as `checkLoginStatus`
+  already did at startup. If both paths fail, the retry backoff still applies.
+
 ## 0.15.0
 
 * **Fix: refreshed access tokens now reach consumers.** `AuthService` refreshes

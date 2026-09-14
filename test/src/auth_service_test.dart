@@ -1098,6 +1098,109 @@ void main() {
           },
         );
 
+        // A native-form login against a confidential FusionAuth client stores
+        // a refresh token AND lastLoginCredentials, but FusionAuth rejects the
+        // public refresh-token grant (invalid_client). The proactive refresh
+        // must fall back to the server-side refresh right away, or the access
+        // token silently expires.
+        test(
+          'OAuth refresh rejected: falls back to the server-side refresh and '
+          'publishes the new token',
+          () {
+            fakeAsync((fa) {
+              stubNearlyExpiredSession();
+              when(
+                mockSecureStorage.read(key: 'lastLoginCredentials'),
+              ).thenAnswer((_) async => 'stored_llc');
+
+              when(
+                mockFusionAuthClient.oauthRefreshTokenGrant(
+                  'current_refresh_token',
+                ),
+              ).thenAnswer((_) async => throw '{"error":"invalid_client"}');
+              final serverTokens = TokenResponse(
+                accessToken: 'server_refreshed_token',
+                expiresIn: 3600,
+                tokenType: 'Bearer',
+                userID: 'user123',
+              );
+              when(
+                mockJwtDecoder.decode('server_refreshed_token'),
+              ).thenReturn({
+                'sub': 'user123',
+                'exp':
+                    DateTime.now()
+                        .add(const Duration(hours: 1))
+                        .millisecondsSinceEpoch ~/
+                    1000,
+              });
+              when(
+                mockFusionAuthClient.refreshTokenGrant('stored_llc'),
+              ).thenAnswer((_) async => serverTokens);
+
+              final tokenEvents = <String>[];
+              authService.accessTokenStream.listen(tokenEvents.add);
+
+              authService.init();
+              fa.flushMicrotasks();
+              authService.checkLoginStatus();
+              fa.flushMicrotasks();
+
+              verify(
+                mockFusionAuthClient.oauthRefreshTokenGrant(
+                  'current_refresh_token',
+                ),
+              ).called(1);
+              verify(
+                mockFusionAuthClient.refreshTokenGrant('stored_llc'),
+              ).called(1);
+              expect(tokenEvents, contains('server_refreshed_token'));
+              expect(authService.currentAccessToken, 'server_refreshed_token');
+
+              authService.dispose();
+            });
+          },
+        );
+
+        test(
+          'both refresh paths failing arms the retry (no silent give-up)',
+          () {
+            fakeAsync((fa) {
+              stubNearlyExpiredSession();
+              when(
+                mockSecureStorage.read(key: 'lastLoginCredentials'),
+              ).thenAnswer((_) async => 'stored_llc');
+              var oauthCalls = 0, serverCalls = 0;
+              when(
+                mockFusionAuthClient.oauthRefreshTokenGrant(
+                  'current_refresh_token',
+                ),
+              ).thenAnswer((_) async {
+                oauthCalls++;
+                throw 'invalid_client';
+              });
+              when(
+                mockFusionAuthClient.refreshTokenGrant('stored_llc'),
+              ).thenAnswer((_) async {
+                serverCalls++;
+                throw 'backend down';
+              });
+
+              authService.init();
+              fa.flushMicrotasks();
+              authService.checkLoginStatus();
+              fa.flushMicrotasks();
+              expect((oauthCalls, serverCalls), (1, 1));
+
+              fa.elapse(const Duration(seconds: 30));
+              fa.flushMicrotasks();
+              expect((oauthCalls, serverCalls), (2, 2));
+
+              authService.dispose();
+            });
+          },
+        );
+
         test('dispose cancels the pending retry timer', () {
           fakeAsync((fa) {
             stubNearlyExpiredSession();

@@ -710,18 +710,40 @@ class AuthService {
     _isRefreshing = true;
     try {
       log.i('Attempting proactive token refresh...');
-      final TokenResponse newTokens;
+      TokenResponse? newTokens;
+      Object? oauthError;
       if (_currentRefreshToken != null) {
-        newTokens = await _fusionAuthClient.oauthRefreshTokenGrant(
-          _currentRefreshToken!,
-        );
-      } else if (_currentLastLoginCredentials != null) {
-        newTokens = await _fusionAuthClient.refreshTokenGrant(
-          _currentLastLoginCredentials!,
-        );
-      } else {
-        log.w('No refresh credentials available for proactive refresh.');
-        return;
+        try {
+          newTokens = await _fusionAuthClient.oauthRefreshTokenGrant(
+            _currentRefreshToken!,
+          );
+        } catch (e) {
+          // A confidential client cannot use the public refresh-token grant
+          // (FusionAuth answers invalid_client), so a native-form login that
+          // stored both a refresh token and lastLoginCredentials must fall back
+          // to the server-side refresh, exactly as checkLoginStatus does.
+          // Without this every proactive refresh fails the same way and the
+          // access token expires in place.
+          if (_currentLastLoginCredentials == null) rethrow;
+          oauthError = e;
+          log.w('OAuth refresh failed ($e); trying server-side refresh.');
+        }
+      }
+      if (newTokens == null) {
+        if (_currentLastLoginCredentials == null) {
+          log.w('No refresh credentials available for proactive refresh.');
+          return;
+        }
+        try {
+          newTokens = await _fusionAuthClient.refreshTokenGrant(
+            _currentLastLoginCredentials!,
+          );
+        } catch (e) {
+          if (oauthError != null) {
+            throw 'OAuth refresh: $oauthError; server-side refresh: $e';
+          }
+          rethrow;
+        }
       }
       // _storeTokens publishes to accessTokenStream, which is what propagates
       // the new token to listeners. Deliberately NOT signalling
