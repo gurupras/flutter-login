@@ -62,7 +62,7 @@ class FusionAuthClient {
       final response = json.decode(result.body);
       return LoginResponse.fromJson(response);
     } else {
-      throw result.body;
+      throw AuthServerException(result.statusCode, result.body);
     }
   }
 
@@ -81,7 +81,7 @@ class FusionAuthClient {
       final response = json.decode(result.body);
       return TokenResponse.fromJson(response);
     } else {
-      throw result.body;
+      throw AuthServerException(result.statusCode, result.body);
     }
   }
 
@@ -105,7 +105,7 @@ class FusionAuthClient {
       final response = json.decode(result.body);
       return TokenResponse.fromJson(response);
     } else {
-      throw result.body;
+      throw AuthServerException(result.statusCode, result.body);
     }
   }
 
@@ -126,7 +126,7 @@ class FusionAuthClient {
       final response = json.decode(result.body);
       return TokenResponse.fromJson(response);
     } else {
-      throw result.body;
+      throw AuthServerException(result.statusCode, result.body);
     }
   }
 
@@ -163,7 +163,7 @@ class FusionAuthClient {
         userID: response['userId'] as String?,
       );
     } else {
-      throw result.body;
+      throw AuthServerException(result.statusCode, result.body);
     }
   }
 
@@ -201,7 +201,7 @@ class FusionAuthClient {
         userID: response['userId'] as String?,
       );
     } else {
-      throw result.body;
+      throw AuthServerException(result.statusCode, result.body);
     }
   }
 
@@ -225,7 +225,7 @@ class FusionAuthClient {
       final response = json.decode(result.body);
       return TokenResponse.fromJson(response);
     } else {
-      throw result.body;
+      throw AuthServerException(result.statusCode, result.body);
     }
   }
 }

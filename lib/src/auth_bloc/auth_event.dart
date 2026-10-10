@@ -1,26 +1,10 @@
 part of 'auth_bloc.dart';
 
+/// Session events only. A sign-in attempt is not one: it runs through
+/// [AuthService] and reaches the bloc as [SignInSucceeded] on
+/// [AuthService.signInResults]. A failed or cancelled attempt leaves the
+/// session exactly as it was.
 abstract class AuthEvent {}
-
-class AuthLogin extends AuthEvent {
-  final String username;
-  final String password;
-
-  AuthLogin({required this.username, required this.password});
-}
-
-class AuthSignUp extends AuthEvent {
-  final String username;
-  final String password;
-
-  AuthSignUp({required this.username, required this.password});
-}
-
-class AuthRecoverPassword extends AuthEvent {
-  final String email;
-
-  AuthRecoverPassword({required this.email});
-}
 
 class AuthLogout extends AuthEvent {}
 

@@ -14,11 +14,13 @@ void main() {
   group('AuthBloc', () {
     late MockAuthService mockAuthService;
     late StreamController<String> accessTokenController;
+    late StreamController<SignInResult> signInResultController;
 
     setUp(() {
       mockAuthService = MockAuthService();
-      when(mockAuthService.authRedirectStream)
-          .thenAnswer((_) => const Stream.empty());
+      signInResultController = StreamController<SignInResult>.broadcast();
+      when(mockAuthService.signInResults)
+          .thenAnswer((_) => signInResultController.stream);
       accessTokenController = StreamController<String>.broadcast();
       when(mockAuthService.accessTokenStream)
           .thenAnswer((_) => accessTokenController.stream);
@@ -26,6 +28,7 @@ void main() {
 
     tearDown(() async {
       await accessTokenController.close();
+      await signInResultController.close();
     });
 
     final mockDecodedToken = DecodedAccessToken(sub: 'test_sub');
@@ -34,138 +37,6 @@ void main() {
       'emits [AuthInitial] when nothing is added',
       build: () => AuthBloc(authService: mockAuthService),
       expect: () => [],
-    );
-
-    blocTest<AuthBloc, AuthState>(
-      'emits [AuthLoading, AuthAuthenticated] when AuthLogin is successful',
-      build: () {
-        when(mockAuthService.login('test@example.com', 'password'))
-            .thenAnswer((_) async => true);
-        when(mockAuthService.currentAccessToken)
-            .thenReturn('mock_access_token');
-        when(mockAuthService.currentIdToken).thenReturn('mock_id_token');
-        when(mockAuthService.decodedAccessToken).thenReturn(mockDecodedToken);
-        return AuthBloc(authService: mockAuthService);
-      },
-      act: (bloc) =>
-          bloc.add(AuthLogin(username: 'test@example.com', password: 'password')),
-      expect: () => [
-        AuthLoading(),
-        AuthAuthenticated(
-          accessToken: 'mock_access_token',
-          idToken: 'mock_id_token',
-          decodedAccessToken: mockDecodedToken,
-        )
-      ],
-      verify: (_) {
-        verify(mockAuthService.login('test@example.com', 'password')).called(1);
-      },
-    );
-
-    blocTest<AuthBloc, AuthState>(
-      'emits [AuthLoading, AuthError] when AuthLogin fails',
-      build: () {
-        when(mockAuthService.login('test@example.com', 'wrong_password'))
-            .thenAnswer((_) async => false);
-        return AuthBloc(authService: mockAuthService);
-      },
-      act: (bloc) => bloc
-          .add(AuthLogin(username: 'test@example.com', password: 'wrong_password')),
-      expect: () => [AuthLoading(), AuthError(message: 'Login failed')],
-      verify: (_) {
-        verify(mockAuthService.login('test@example.com', 'wrong_password'))
-            .called(1);
-      },
-    );
-
-    blocTest<AuthBloc, AuthState>(
-      'emits [AuthLoading, AuthError] when AuthLogin throws an exception',
-      build: () {
-        when(mockAuthService.login(any, any))
-            .thenThrow(Exception('Network error'));
-        return AuthBloc(authService: mockAuthService);
-      },
-      act: (bloc) =>
-          bloc.add(AuthLogin(username: 'test@example.com', password: 'password')),
-      expect: () =>
-          [AuthLoading(), AuthError(message: 'Exception: Network error')],
-      verify: (_) {
-        verify(mockAuthService.login('test@example.com', 'password')).called(1);
-      },
-    );
-
-    blocTest<AuthBloc, AuthState>(
-      'emits [AuthLoading, AuthAuthenticated] when AuthSignUp is successful',
-      build: () {
-        when(mockAuthService.signUp('new@example.com', 'new_password'))
-            .thenAnswer((_) async => true);
-        when(mockAuthService.currentAccessToken)
-            .thenReturn('mock_access_token');
-        when(mockAuthService.currentIdToken).thenReturn('mock_id_token');
-        when(mockAuthService.decodedAccessToken).thenReturn(mockDecodedToken);
-        return AuthBloc(authService: mockAuthService);
-      },
-      act: (bloc) => bloc
-          .add(AuthSignUp(username: 'new@example.com', password: 'new_password')),
-      expect: () => [
-        AuthLoading(),
-        AuthAuthenticated(
-          accessToken: 'mock_access_token',
-          idToken: 'mock_id_token',
-          decodedAccessToken: mockDecodedToken,
-        )
-      ],
-      verify: (_) {
-        verify(mockAuthService.signUp('new@example.com', 'new_password'))
-            .called(1);
-      },
-    );
-
-    blocTest<AuthBloc, AuthState>(
-      'emits [AuthLoading, AuthError] when AuthSignUp fails',
-      build: () {
-        when(mockAuthService.signUp('new@example.com', 'new_password'))
-            .thenAnswer((_) async => false);
-        return AuthBloc(authService: mockAuthService);
-      },
-      act: (bloc) => bloc
-          .add(AuthSignUp(username: 'new@example.com', password: 'new_password')),
-      expect: () => [AuthLoading(), AuthError(message: 'Sign up failed')],
-      verify: (_) {
-        verify(mockAuthService.signUp('new@example.com', 'new_password'))
-            .called(1);
-      },
-    );
-
-    blocTest<AuthBloc, AuthState>(
-      'emits [AuthLoading, AuthRecoverPasswordSuccess] when AuthRecoverPassword is successful',
-      build: () {
-        when(mockAuthService.recoverPassword('recover@example.com'))
-            .thenAnswer((_) async => true);
-        return AuthBloc(authService: mockAuthService);
-      },
-      act: (bloc) => bloc.add(AuthRecoverPassword(email: 'recover@example.com')),
-      expect: () => [AuthLoading(), AuthRecoverPasswordSuccess()],
-      verify: (_) {
-        verify(mockAuthService.recoverPassword('recover@example.com'))
-            .called(1);
-      },
-    );
-
-    blocTest<AuthBloc, AuthState>(
-      'emits [AuthLoading, AuthError] when AuthRecoverPassword fails',
-      build: () {
-        when(mockAuthService.recoverPassword('recover@example.com'))
-            .thenAnswer((_) async => false);
-        return AuthBloc(authService: mockAuthService);
-      },
-      act: (bloc) => bloc.add(AuthRecoverPassword(email: 'recover@example.com')),
-      expect: () =>
-          [AuthLoading(), AuthError(message: 'Password recovery failed')],
-      verify: (_) {
-        verify(mockAuthService.recoverPassword('recover@example.com'))
-            .called(1);
-      },
     );
 
     blocTest<AuthBloc, AuthState>(
@@ -219,21 +90,17 @@ void main() {
     );
 
     blocTest<AuthBloc, AuthState>(
-      'adds AuthCheckStatus when authRedirectStream emits true',
+      'checks the session when a sign-in succeeds',
       build: () {
-        final authRedirectController = StreamController<bool>();
-        when(mockAuthService.authRedirectStream)
-            .thenAnswer((_) => authRedirectController.stream);
         when(mockAuthService.checkLoginStatus())
             .thenAnswer((_) async => true); // Mock for AuthCheckStatus
         when(mockAuthService.currentAccessToken)
             .thenReturn('mock_access_token');
         when(mockAuthService.currentIdToken).thenReturn('mock_id_token');
         when(mockAuthService.decodedAccessToken).thenReturn(mockDecodedToken);
-        final bloc = AuthBloc(authService: mockAuthService);
-        authRedirectController.add(true);
-        return bloc;
+        return AuthBloc(authService: mockAuthService);
       },
+      act: (_) => signInResultController.add(const SignInSucceeded()),
       expect: () => [
         AuthLoading(),
         AuthAuthenticated(
@@ -247,19 +114,27 @@ void main() {
       },
     );
 
+    // A failed attempt is not a change of session. Emitting AuthError here
+    // would read as "signed out" to a consumer, and a signed-in user would be
+    // thrown back to the start as if they had logged out.
     blocTest<AuthBloc, AuthState>(
-      'does not add AuthCheckStatus when authRedirectStream emits false',
-      build: () {
-        final authRedirectController = StreamController<bool>();
-        when(mockAuthService.authRedirectStream)
-            .thenAnswer((_) => authRedirectController.stream);
-        when(mockAuthService.checkLoginStatus())
-            .thenAnswer((_) async => true); // Mock for AuthCheckStatus
-        final bloc = AuthBloc(authService: mockAuthService);
-        authRedirectController.add(false);
-        return bloc;
+      'leaves the session untouched when a sign-in fails',
+      build: () => AuthBloc(authService: mockAuthService),
+      seed: () => AuthUnauthenticated(),
+      act: (_) => signInResultController
+          .add(const SignInFailed("Couldn't sign in. Try again.")),
+      expect: () => [],
+      verify: (_) {
+        verifyNever(mockAuthService.checkLoginStatus());
       },
-      expect: () => [], // No state changes expected
+    );
+
+    blocTest<AuthBloc, AuthState>(
+      'leaves the session untouched when a sign-in is cancelled',
+      build: () => AuthBloc(authService: mockAuthService),
+      seed: () => AuthUnauthenticated(),
+      act: (_) => signInResultController.add(const SignInCancelled()),
+      expect: () => [],
       verify: (_) {
         verifyNever(mockAuthService.checkLoginStatus());
       },

@@ -1,3 +1,31 @@
+## 0.19.0
+
+* **Fix: a failed sign-in now tells the user.** When the browser sign-in's code
+  exchange failed, `AuthService` sent `false` and nothing reacted, so the user
+  stayed on the login page with no message. `false` also stood for "the user
+  cancelled", so no listener could tell a failure from a cancel.
+* **Breaking:** every sign-in reports a `SignInResult`, one of
+  `SignInSucceeded`, `SignInCancelled` or `SignInFailed(message)`. The message
+  is always safe to show. The sign-in server's own wording passes through, for
+  example "Invalid email or password". A network error says the server could
+  not be reached. Anything else says "Couldn't sign in. Try again."
+  * `authRedirectStream` (`Stream<bool>`) is replaced by `signInResults`. It
+    carries every success, plus the failure or cancel of the browser flow,
+    which has no caller to return to.
+  * `login`, `signUp`, `initiateGoogleNativeLogin` and `initiateAppleLogin`
+    return `Future<SignInResult>` and never throw. `recoverPassword` returns
+    `Future<String?>`: null on success, otherwise the message to show.
+  * `FusionAuthClient` throws `AuthServerException(statusCode, body)` instead
+    of the bare body.
+  * `AuthLogin`, `AuthSignUp`, `AuthRecoverPassword` and
+    `AuthRecoverPasswordSuccess` are removed. A sign-in attempt is not a
+    session event. A failed attempt used to emit `AuthError`, which an app
+    reads as "signed out". Now `AuthBloc` changes state only when a sign-in
+    succeeds.
+* `LoginPage` shows email, phone Google and Apple failures in the login form's
+  own error banner, and a failed browser sign-in in a snackbar. A cancel stays
+  silent. It no longer snackbars `AuthError`, whose text was a raw exception.
+
 ## 0.18.2
 
 * **Fix: background token refresh falls back to the server-side refresh.** A

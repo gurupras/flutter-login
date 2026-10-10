@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -209,12 +208,18 @@ void main() {
             ),
           ).thenAnswer((_) async => {});
 
+          final published = <SignInResult>[];
+          authService.signInResults.listen(published.add);
+
           final result = await authService.login('user', 'pass');
           async.elapse(
             const Duration(hours: 1),
           ); // Elapse time for token refresh timer
+          await Future<void>.delayed(Duration.zero);
 
-          expect(result, isTrue);
+          expect(result, isA<SignInSucceeded>());
+          // The session learns of the sign-in through the stream.
+          expect(published, [isA<SignInSucceeded>()]);
           expect(authService.currentIdToken, 'id_token');
           verify(
             mockFusionAuthClient.login(
@@ -242,8 +247,7 @@ void main() {
         },
       );
 
-      test('login throws on FusionAuthClient.login error', () async {
-        const errorMessage = 'Login failed';
+      void stubLoginThrows(Object error) {
         when(
           mockFusionAuthClient.login(
             username: anyNamed('username'),
@@ -252,48 +256,94 @@ void main() {
             lastLoginCredentials: anyNamed('lastLoginCredentials'),
             device: anyNamed('device'),
           ),
-        ).thenThrow(errorMessage);
+        ).thenThrow(error);
+      }
 
-        expect(
-          () => authService.login('user', 'pass'),
-          throwsA(errorMessage),
+      test(
+        'login shows the server sentence when it rejects the password',
+        () async {
+          stubLoginThrows(
+            AuthServerException(404, 'Invalid email or password'),
+          );
+          final published = <SignInResult>[];
+          authService.signInResults.listen(published.add);
+
+          final result = await authService.login('user', 'pass');
+          await Future<void>.delayed(Duration.zero);
+
+          expect(
+            result,
+            isA<SignInFailed>().having(
+              (f) => f.message,
+              'message',
+              'Invalid email or password',
+            ),
+          );
+          // The caller shows it, so the stream must not report it again.
+          expect(published, isEmpty);
+          verify(
+            mockFusionAuthClient.login(
+              username: 'user',
+              password: 'pass',
+              scope: 'openid email offline_access',
+              lastLoginCredentials: null,
+            ),
+          ).called(1);
+          verifyNever(
+            mockSecureStorage.write(
+              key: anyNamed('key'),
+              value: anyNamed('value'),
+            ),
+          );
+        },
+      );
+
+      test('login never shows a server fault or a JSON body', () async {
+        stubLoginThrows(
+          AuthServerException(500, 'Something went wrong. Please report this'),
         );
-        async.elapse(Duration.zero); // Add this line
-
-        verify(
-          mockFusionAuthClient.login(
-            username: 'user',
-            password: 'pass',
-            scope: 'openid email offline_access',
-            lastLoginCredentials: null,
+        expect(
+          await authService.login('user', 'pass'),
+          isA<SignInFailed>().having(
+            (f) => f.message,
+            'message',
+            "Couldn't sign in. Try again.",
           ),
-        ).called(1);
-        verifyNever(
-          mockSecureStorage.write(
-            key: anyNamed('key'),
-            value: anyNamed('value'),
+        );
+
+        stubLoginThrows(AuthServerException(400, '{"message":"internal"}'));
+        expect(
+          await authService.login('user', 'pass'),
+          isA<SignInFailed>().having(
+            (f) => f.message,
+            'message',
+            "Couldn't sign in. Try again.",
+          ),
+        );
+
+        stubLoginThrows(StateError('raw exception text'));
+        expect(
+          await authService.login('user', 'pass'),
+          isA<SignInFailed>().having(
+            (f) => f.message,
+            'message',
+            "Couldn't sign in. Try again.",
           ),
         );
       });
 
-      test('login throws descriptive message from backend', () async {
-        const backendMessage = 'Invalid credentials';
-        final errorResponse = json.encode({'message': backendMessage});
-        when(
-          mockFusionAuthClient.login(
-            username: anyNamed('username'),
-            password: anyNamed('password'),
-            scope: anyNamed('scope'),
-            lastLoginCredentials: anyNamed('lastLoginCredentials'),
-            device: anyNamed('device'),
-          ),
-        ).thenThrow(errorResponse);
+      test('login says the server could not be reached when offline', () async {
+        stubLoginThrows(http.ClientException('Connection refused'));
 
         expect(
-          () => authService.login('user', 'pass'),
-          throwsA(backendMessage),
+          await authService.login('user', 'pass'),
+          isA<SignInFailed>().having(
+            (f) => f.message,
+            'message',
+            "Couldn't reach the sign-in server. Check your connection and "
+                'try again.',
+          ),
         );
-        async.elapse(Duration.zero);
       });
 
       test('signUp calls http client and then login on success', () async {
@@ -335,7 +385,7 @@ void main() {
           const Duration(hours: 1),
         ); // Elapse time for token refresh timer
 
-        expect(result, isTrue);
+        expect(result, isA<SignInSucceeded>());
         verify(
           mockHttpClient.post(
             Uri.parse('https://signup.example.com/login/register'),
@@ -353,20 +403,26 @@ void main() {
         ).called(1);
       });
 
-      test('signUp throws if http client post fails', () async {
+      test('signUp shows the server sentence when registration is refused', () async {
         when(
           mockHttpClient.post(
             any,
             headers: anyNamed('headers'),
             body: anyNamed('body'),
           ),
-        ).thenAnswer((_) async => http.Response('Error', 400));
+        ).thenAnswer(
+          (_) async =>
+              http.Response('A user already exists with this email', 400),
+        );
 
         expect(
-          () => authService.signUp('newuser', 'newpass'),
-          throwsA(anything),
+          await authService.signUp('newuser', 'newpass'),
+          isA<SignInFailed>().having(
+            (f) => f.message,
+            'message',
+            'A user already exists with this email',
+          ),
         );
-        async.elapse(Duration.zero); // Add this line
 
         verify(
           mockHttpClient.post(
@@ -376,45 +432,45 @@ void main() {
           ),
         ).called(1);
         verifyNever(
-          mockFusionAuthClient.resourceOwnerPasswordCredentialsGrant(any, any),
+          mockFusionAuthClient.login(
+            username: anyNamed('username'),
+            password: anyNamed('password'),
+            scope: anyNamed('scope'),
+            lastLoginCredentials: anyNamed('lastLoginCredentials'),
+            device: anyNamed('device'),
+          ),
         );
       });
 
+      // The server asks a new user to verify their email, so the sign-in that
+      // follows registration fails with that sentence. It must reach the user.
       test(
-        'signUp throws verification message when registration succeeds but login fails',
+        'signUp passes on the verify-your-email sentence from the sign-in',
         () async {
           const verificationMessage =
-              'Please verify your email ID before logging in.';
+              'Please verify your email. A new verification email has been '
+              'sent to you';
           when(
             mockHttpClient.post(
               any,
               headers: anyNamed('headers'),
               body: anyNamed('body'),
             ),
-          ).thenAnswer(
-            (_) async =>
-                http.Response(json.encode({'message': verificationMessage}), 200),
-          );
-
-          when(
-            mockFusionAuthClient.login(
-              username: anyNamed('username'),
-              password: anyNamed('password'),
-              scope: anyNamed('scope'),
-              lastLoginCredentials: anyNamed('lastLoginCredentials'),
-              device: anyNamed('device'),
-            ),
-          ).thenThrow(json.encode({'message': 'User is not verified'}));
+          ).thenAnswer((_) async => http.Response('', 200));
+          stubLoginThrows(AuthServerException(400, verificationMessage));
 
           expect(
-            () => authService.signUp('test@example.com', 'password'),
-            throwsA(verificationMessage),
+            await authService.signUp('test@example.com', 'password'),
+            isA<SignInFailed>().having(
+              (f) => f.message,
+              'message',
+              verificationMessage,
+            ),
           );
-          async.elapse(Duration.zero);
         },
       );
 
-      test('recoverPassword returns true (placeholder)', () async {
+      test('recoverPassword returns no message on success', () async {
         when(
           mockHttpClient.post(
             Uri.parse('https://signup.example.com/login/forgot-password'),
@@ -423,9 +479,22 @@ void main() {
           ),
         ).thenAnswer((_) async => http.Response('', 200));
 
-        final result = await authService.recoverPassword('email@example.com');
-        async.elapse(Duration.zero); // Add this line
-        expect(result, isTrue);
+        expect(await authService.recoverPassword('email@example.com'), isNull);
+      });
+
+      test('recoverPassword returns a safe message on failure', () async {
+        when(
+          mockHttpClient.post(
+            Uri.parse('https://signup.example.com/login/forgot-password'),
+            headers: anyNamed('headers'),
+            body: anyNamed('body'),
+          ),
+        ).thenAnswer((_) async => http.Response('Too many requests', 500));
+
+        expect(
+          await authService.recoverPassword('email@example.com'),
+          "Couldn't send the reset email. Try again.",
+        );
       });
 
       test('logout clears stored tokens', () async {
@@ -818,8 +887,8 @@ void main() {
               ),
             ).thenAnswer((_) async => {});
 
-            final redirectEvents = <bool>[];
-            authService.authRedirectStream.listen(redirectEvents.add);
+            final signInEvents = <SignInResult>[];
+            authService.signInResults.listen(signInEvents.add);
             final tokenEvents = <String>[];
             authService.accessTokenStream.listen(tokenEvents.add);
 
@@ -838,10 +907,10 @@ void main() {
             // the token they were handed at login and start 401ing at expiry.
             expect(tokenEvents, contains('refreshed_access_token'));
             expect(authService.currentAccessToken, 'refreshed_access_token');
-            // A silent refresh is not a redirect: signalling authRedirectStream
-            // here would make AuthBloc re-run AuthCheckStatus and bounce every
-            // listener through AuthLoading roughly once an hour.
-            expect(redirectEvents, isEmpty);
+            // A silent refresh is not a sign-in: publishing one here would
+            // make AuthBloc re-run AuthCheckStatus and bounce every listener
+            // through AuthLoading roughly once an hour.
+            expect(signInEvents, isEmpty);
           },
         );
 
@@ -1379,7 +1448,7 @@ void main() {
         });
 
         test(
-          'calls appleIdpLogin with identity token and emits true on success',
+          'calls appleIdpLogin with identity token and reports success',
           () async {
             when(
               mockAppleSignIn.getCredential(),
@@ -1410,15 +1479,15 @@ void main() {
               ),
             ).thenAnswer((_) async => {});
 
-            final redirectEvents = <bool>[];
-            appleAuthService.authRedirectStream.listen(redirectEvents.add);
+            final published = <SignInResult>[];
+            appleAuthService.signInResults.listen(published.add);
 
             final result = await appleAuthService.initiateAppleLogin();
             await Future.delayed(Duration.zero);
             async.elapse(const Duration(hours: 1));
 
-            expect(result, isTrue);
-            expect(redirectEvents, contains(true));
+            expect(result, isA<SignInSucceeded>());
+            expect(published, [isA<SignInSucceeded>()]);
             verify(
               mockFusionAuthClient.appleIdpLogin(
                 identityToken: 'apple_identity_token',
@@ -1440,7 +1509,7 @@ void main() {
         );
 
         test(
-          'returns false without calling idpLogin when identity token is null',
+          'fails without calling idpLogin when identity token is null',
           () async {
             when(
               mockAppleSignIn.getCredential(),
@@ -1449,7 +1518,7 @@ void main() {
             final result = await appleAuthService.initiateAppleLogin();
             async.elapse(Duration.zero);
 
-            expect(result, isFalse);
+            expect(result, isA<SignInFailed>());
             verifyNever(
               mockFusionAuthClient.appleIdpLogin(
                 identityToken: anyNamed('identityToken'),
@@ -1461,22 +1530,22 @@ void main() {
           },
         );
 
-        test('returns false silently when user cancels', () async {
+        test('reports a cancel, not a failure, when user cancels', () async {
           when(mockAppleSignIn.getCredential()).thenThrow(
-            SignInWithAppleAuthorizationException(
+            const SignInWithAppleAuthorizationException(
               code: AuthorizationErrorCode.canceled,
               message: 'User canceled',
             ),
           );
 
-          final redirectEvents = <bool>[];
-          appleAuthService.authRedirectStream.listen(redirectEvents.add);
+          final published = <SignInResult>[];
+          appleAuthService.signInResults.listen(published.add);
 
           final result = await appleAuthService.initiateAppleLogin();
-          async.elapse(Duration.zero);
+          await Future<void>.delayed(Duration.zero);
 
-          expect(result, isFalse);
-          expect(redirectEvents, isEmpty);
+          expect(result, isA<SignInCancelled>());
+          expect(published, isEmpty);
           verifyNever(
             mockFusionAuthClient.appleIdpLogin(
               identityToken: anyNamed('identityToken'),
@@ -1488,7 +1557,7 @@ void main() {
         });
 
         test(
-          'returns false and emits false when FusionAuth idpLogin fails',
+          'returns a safe failure message when FusionAuth idpLogin fails',
           () async {
             when(
               mockAppleSignIn.getCredential(),
@@ -1500,17 +1569,25 @@ void main() {
                 identityProviderId: anyNamed('identityProviderId'),
                 redirectUri: anyNamed('redirectUri'),
               ),
-            ).thenThrow('IdP login failed');
+            ).thenThrow(AuthServerException(400, '{"fieldErrors":{}}'));
 
-            final redirectEvents = <bool>[];
-            appleAuthService.authRedirectStream.listen(redirectEvents.add);
+            final published = <SignInResult>[];
+            appleAuthService.signInResults.listen(published.add);
 
             final result = await appleAuthService.initiateAppleLogin();
             await Future.delayed(Duration.zero);
             async.elapse(Duration.zero);
 
-            expect(result, isFalse);
-            expect(redirectEvents, contains(false));
+            expect(
+              result,
+              isA<SignInFailed>().having(
+                (f) => f.message,
+                'message',
+                "Couldn't sign in. Try again.",
+              ),
+            );
+            // Returned to the caller, so not reported a second time.
+            expect(published, isEmpty);
           },
         );
 
@@ -1527,7 +1604,7 @@ void main() {
 
       group('initiateGoogleNativeLogin', () {
         test(
-          'calls googleIdpLogin with id token and emits true on success',
+          'calls googleIdpLogin with id token and reports success',
           () async {
             when(
               mockGoogleSignIn.getIdToken(),
@@ -1556,15 +1633,15 @@ void main() {
               ),
             ).thenAnswer((_) async => {});
 
-            final redirectEvents = <bool>[];
-            authService.authRedirectStream.listen(redirectEvents.add);
+            final published = <SignInResult>[];
+            authService.signInResults.listen(published.add);
 
             final result = await authService.initiateGoogleNativeLogin();
             await Future.delayed(Duration.zero);
             async.elapse(const Duration(hours: 1));
 
-            expect(result, isTrue);
-            expect(redirectEvents, contains(true));
+            expect(result, isA<SignInSucceeded>());
+            expect(published, [isA<SignInSucceeded>()]);
             verify(
               mockFusionAuthClient.googleIdpLogin(
                 idToken: 'google_id_token',
@@ -1587,18 +1664,18 @@ void main() {
         );
 
         test(
-          'returns false without calling idpLogin when id token is null',
+          'fails without calling idpLogin when id token is null',
           () async {
             when(mockGoogleSignIn.getIdToken()).thenAnswer((_) async => null);
 
-            final redirectEvents = <bool>[];
-            authService.authRedirectStream.listen(redirectEvents.add);
+            final published = <SignInResult>[];
+            authService.signInResults.listen(published.add);
 
             final result = await authService.initiateGoogleNativeLogin();
-            async.elapse(Duration.zero);
+            await Future<void>.delayed(Duration.zero);
 
-            expect(result, isFalse);
-            expect(redirectEvents, isEmpty);
+            expect(result, isA<SignInFailed>());
+            expect(published, isEmpty);
             verifyNever(
               mockFusionAuthClient.googleIdpLogin(
                 idToken: anyNamed('idToken'),
@@ -1608,7 +1685,7 @@ void main() {
           },
         );
 
-        test('returns false silently when user cancels', () async {
+        test('reports a cancel, not a failure, when user cancels', () async {
           when(mockGoogleSignIn.getIdToken()).thenThrow(
             const GoogleSignInException(
               code: GoogleSignInExceptionCode.canceled,
@@ -1616,14 +1693,14 @@ void main() {
             ),
           );
 
-          final redirectEvents = <bool>[];
-          authService.authRedirectStream.listen(redirectEvents.add);
+          final published = <SignInResult>[];
+          authService.signInResults.listen(published.add);
 
           final result = await authService.initiateGoogleNativeLogin();
-          async.elapse(Duration.zero);
+          await Future<void>.delayed(Duration.zero);
 
-          expect(result, isFalse);
-          expect(redirectEvents, isEmpty);
+          expect(result, isA<SignInCancelled>());
+          expect(published, isEmpty);
           verifyNever(
             mockFusionAuthClient.googleIdpLogin(
               idToken: anyNamed('idToken'),
@@ -1633,7 +1710,7 @@ void main() {
         });
 
         test(
-          'returns false and emits false when FusionAuth idpLogin fails',
+          'returns a safe failure message when FusionAuth idpLogin fails',
           () async {
             when(
               mockGoogleSignIn.getIdToken(),
@@ -1643,22 +1720,29 @@ void main() {
                 idToken: anyNamed('idToken'),
                 identityProviderId: anyNamed('identityProviderId'),
               ),
-            ).thenThrow('IdP login failed');
+            ).thenThrow(AuthServerException(400, '{"fieldErrors":{}}'));
 
-            final redirectEvents = <bool>[];
-            authService.authRedirectStream.listen(redirectEvents.add);
+            final published = <SignInResult>[];
+            authService.signInResults.listen(published.add);
 
             final result = await authService.initiateGoogleNativeLogin();
             await Future.delayed(Duration.zero);
             async.elapse(Duration.zero);
 
-            expect(result, isFalse);
-            expect(redirectEvents, contains(false));
+            expect(
+              result,
+              isA<SignInFailed>().having(
+                (f) => f.message,
+                'message',
+                "Couldn't sign in. Try again.",
+              ),
+            );
+            expect(published, isEmpty);
           },
         );
 
         test(
-          'returns false and emits false on non-cancel GoogleSignInException',
+          'fails, not cancels, on a non-cancel GoogleSignInException',
           () async {
             when(mockGoogleSignIn.getIdToken()).thenThrow(
               const GoogleSignInException(
@@ -1667,14 +1751,14 @@ void main() {
               ),
             );
 
-            final redirectEvents = <bool>[];
-            authService.authRedirectStream.listen(redirectEvents.add);
+            final published = <SignInResult>[];
+            authService.signInResults.listen(published.add);
 
             final result = await authService.initiateGoogleNativeLogin();
-            async.elapse(Duration.zero);
+            await Future<void>.delayed(Duration.zero);
 
-            expect(result, isFalse);
-            expect(redirectEvents, contains(false));
+            expect(result, isA<SignInFailed>());
+            expect(published, isEmpty);
             verifyNever(
               mockFusionAuthClient.googleIdpLogin(
                 idToken: anyNamed('idToken'),
@@ -1759,10 +1843,8 @@ void main() {
             ),
           ).thenAnswer((_) async => {});
 
-          final completer = Completer<bool>();
-          authService.authRedirectStream.listen((success) {
-            completer.complete(success);
-          });
+          final completer = Completer<SignInResult>();
+          authService.signInResults.listen(completer.complete);
 
           // Capture the handler
           final verifyResult = verify(
@@ -1778,7 +1860,7 @@ void main() {
             const Duration(hours: 1),
           ); // Elapse enough time for the timer
 
-          expect(await completer.future, isTrue);
+          expect(await completer.future, isA<SignInSucceeded>());
           expect(authService.currentIdToken, 'id_token');
           verify(
             mockFusionAuthClient.exchangeAuthorizationCode(
@@ -1794,27 +1876,38 @@ void main() {
           ).called(1);
         });
 
-        test('does not process redirect if code is missing', () async {
-          final uri = Uri.parse('https://example.com/callback');
-
-          final completer = Completer<bool>();
-          authService.authRedirectStream.listen((success) {
-            completer.complete(success);
-          });
-
-          // Capture the handler
-          final verifyResult = verify(
-            mockLibloginNative.setAuthRedirectHandler(captureAny),
-          );
-          final handler = verifyResult.captured.single as Function(String);
-
-          // Trigger the handler
-          handler(uri.toString());
-
+        Future<SignInResult> redirectTo(String url) {
+          final completer = Completer<SignInResult>();
+          authService.signInResults.listen(completer.complete);
+          final handler =
+              verify(
+                    mockLibloginNative.setAuthRedirectHandler(captureAny),
+                  ).captured.single
+                  as Function(String);
+          handler(url);
           async.flushMicrotasks();
-          async.elapse(Duration.zero); // Add this line
+          return completer.future;
+        }
 
-          expect(await completer.future, isFalse);
+        test('reports a cancel when the user declines consent', () async {
+          expect(
+            await redirectTo(
+              'https://example.com/callback?error=access_denied',
+            ),
+            isA<SignInCancelled>(),
+          );
+          verifyNever(mockFusionAuthClient.exchangeAuthorizationCode(any, any));
+        });
+
+        test('fails, without exchanging, if code is missing', () async {
+          expect(
+            await redirectTo('https://example.com/callback'),
+            isA<SignInFailed>().having(
+              (f) => f.message,
+              'message',
+              "Couldn't sign in. Try again.",
+            ),
+          );
           verifyNever(mockFusionAuthClient.exchangeAuthorizationCode(any, any));
           verifyNever(
             mockSecureStorage.write(
@@ -1825,12 +1918,8 @@ void main() {
         });
 
         test(
-          'emits false on authRedirectStream if token exchange fails',
+          'reports a safe failure message if token exchange fails',
           () async {
-            final uri = Uri.parse(
-              'https://example.com/callback?code=auth_code',
-            );
-
             when(
               mockSecureStorage.read(key: 'code_verifier'),
             ).thenAnswer((_) async => 'mock_code_verifier');
@@ -1839,26 +1928,18 @@ void main() {
                 'auth_code',
                 'mock_code_verifier',
               ),
-            ).thenThrow('Exchange failed');
-
-            final completer = Completer<bool>();
-            authService.authRedirectStream.listen((success) {
-              completer.complete(success);
-            });
-
-            // Capture the handler
-            final verifyResult = verify(
-              mockLibloginNative.setAuthRedirectHandler(captureAny),
+            ).thenThrow(
+              AuthServerException(400, '{"error":"invalid_grant"}'),
             );
-            final handler = verifyResult.captured.single as Function(String);
 
-            // Trigger the handler
-            handler(uri.toString());
-
-            async.flushMicrotasks();
-            async.elapse(Duration.zero); // Add this line
-
-            expect(await completer.future, isFalse);
+            expect(
+              await redirectTo('https://example.com/callback?code=auth_code'),
+              isA<SignInFailed>().having(
+                (f) => f.message,
+                'message',
+                "Couldn't sign in. Try again.",
+              ),
+            );
             verify(
               mockFusionAuthClient.exchangeAuthorizationCode(
                 'auth_code',

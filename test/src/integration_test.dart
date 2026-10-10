@@ -7,7 +7,6 @@ import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:liblogin/src/auth_service.dart';
-import 'package:liblogin/src/fusionauth_client.dart';
 import 'package:liblogin/src/login_config.dart';
 import 'package:liblogin/src/auth_models.dart';
 
@@ -149,7 +148,7 @@ Stderr: ${result.stderr}''',
       );
       expect(
         loginSuccess,
-        isTrue,
+        isA<SignInSucceeded>(),
         reason: 'Login should succeed for pre-configured user',
       );
 
@@ -247,13 +246,16 @@ Stderr: ${result.stderr}''',
       const String password = 'Password123!';
 
       print('Testing signUp with $email...');
-      // signUp will throw because it internally calls login which fails due to verification
-      try {
-        await authService.signUp(email, password);
-        fail('signUp should have thrown verification error');
-      } catch (e) {
-        expect(e.toString(), contains('verify your email'));
-      }
+      // signUp's follow-up sign-in fails until the email is verified, and the
+      // server's sentence saying so must reach the user.
+      expect(
+        await authService.signUp(email, password),
+        isA<SignInFailed>().having(
+          (f) => f.message,
+          'message',
+          contains('verify your email'),
+        ),
+      );
 
       print('Verifying email $email...');
       final verifyResp = await http.get(
@@ -265,7 +267,7 @@ Stderr: ${result.stderr}''',
       final loginSuccess = await authService.login(email, password);
       expect(
         loginSuccess,
-        isTrue,
+        isA<SignInSucceeded>(),
         reason: 'Login should succeed after verification',
       );
 
@@ -283,8 +285,12 @@ Stderr: ${result.stderr}''',
 
     test('Login with incorrect credentials fails', () async {
       expect(
-        () => authService.login('nonexistent@example.com', 'wrongpassword'),
-        throwsA(contains('Invalid email or password')),
+        await authService.login('nonexistent@example.com', 'wrongpassword'),
+        isA<SignInFailed>().having(
+          (f) => f.message,
+          'message',
+          'Invalid email or password',
+        ),
       );
     });
 
@@ -325,33 +331,35 @@ Stderr: ${result.stderr}''',
     test('Duplicate Sign-up Handling', () async {
       print('Testing duplicate sign-up...');
       // Sign up the first time (ignore if it already exists from a previous run)
-      try {
-        await authService.signUp(testUser1Email, testUser1Password);
-      } catch (_) {}
+      await authService.signUp(testUser1Email, testUser1Password);
 
       // Attempt to sign up with the same email again
       expect(
-        () => authService.signUp(testUser1Email, testUser1Password),
-        throwsA(contains('already exists')),
+        await authService.signUp(testUser1Email, testUser1Password),
+        isA<SignInFailed>().having(
+          (f) => f.message,
+          'message',
+          contains('already exists'),
+        ),
       );
     });
 
     test('Password Recovery flow', () async {
       print('Testing password recovery...');
-      final success = await authService.recoverPassword(testUser1Email);
+      final failure = await authService.recoverPassword(testUser1Email);
       expect(
-        success,
-        isTrue,
+        failure,
+        isNull,
         reason: 'Password recovery request should succeed for valid user',
       );
 
       // Test with non-existent user (FusionAuth usually returns success anyway for security, but let's check backend behavior)
-      final nonExistentSuccess = await authService.recoverPassword(
+      final nonExistentFailure = await authService.recoverPassword(
         'nonexistent-recovery@example.com',
       );
       expect(
-        nonExistentSuccess,
-        isTrue,
+        nonExistentFailure,
+        isNull,
         reason:
             'Backend should return success even for non-existent users to avoid email enumeration',
       );

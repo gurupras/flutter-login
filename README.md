@@ -141,22 +141,15 @@ To enable the built-in Apple button:
    needs.
 
 That's it. Tapping the Apple button calls
-`AuthService.initiateAppleLogin()`, which forwards the configured Apple IdP
-UUID as `idp_hint` to FusionAuth's `/oauth2/authorize` endpoint. FusionAuth
-delegates to Apple, then redirects back to your app with an authorization code
-that liblogin exchanges for tokens automatically.
+`AuthService.initiateAppleLogin()`, which opens the native Sign in with Apple
+sheet and posts the resulting identity token to FusionAuth's IdP login
+endpoint (`POST /api/identity-provider/login`). It returns a `SignInResult`:
+a dismissed sheet is `SignInCancelled`, anything else that goes wrong is
+`SignInFailed` with a message safe to show.
 
 If `appleIdentityProviderID` is null, the default providers list silently
 omits the Apple button — there is no behavioural change for existing
 consumers.
-
-> **iOS App Store note.** Apple's App Store Review Guideline 4.8 requires
-> apps that offer third-party social login to also offer Sign in with Apple
-> using the **native** system sheet (not a Safari redirect). The redirect
-> flow above works on every platform and is sufficient for Android, web, and
-> non–App Store iOS distributions. For App Store submissions you may need
-> to add a native iOS path on top of this redirect flow — file a follow-up
-> if review requires it.
 
 #### Native Google Sign-In
 
@@ -238,14 +231,26 @@ LoginPage(
     LoginProvider(
       button: Buttons.apple,
       label: 'Continue with Apple',
+      // flutter_login reads null as "signed in" and any other string as an
+      // error to show. Return the failure message, and give a cancel its own
+      // string listed in errorsToExcludeFromErrorMessage so it stays silent.
+      errorsToExcludeFromErrorMessage: const ['cancelled'],
       callback: () async {
-        await context.read<AuthService>().initiateAppleLogin();
-        return null;
+        final result = await context.read<AuthService>().initiateAppleLogin();
+        return switch (result) {
+          SignInSucceeded() => null,
+          SignInCancelled() => 'cancelled',
+          SignInFailed(:final message) => message,
+        };
       },
     ),
   ],
 )
 ```
+
+The browser Google flow (`initiateGoogleLogin()`) finishes after its callback
+has returned, so its outcome arrives on `AuthService.signInResults`. The
+default `LoginPage` shows a failure from it in a snackbar.
 
 #### Social-only login (no email/password)
 

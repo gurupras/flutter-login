@@ -5,10 +5,12 @@
 // ignore_for_file: no_leading_underscores_for_library_prefixes
 import 'dart:async' as _i5;
 
+import 'package:liblogin/src/auth_models.dart' as _i6;
 import 'package:liblogin/src/auth_service.dart' as _i4;
 import 'package:liblogin/src/login_config.dart' as _i3;
 import 'package:logger/logger.dart' as _i2;
 import 'package:mockito/mockito.dart' as _i1;
+import 'package:mockito/src/dummies.dart' as _i7;
 
 // ignore_for_file: type=lint
 // ignore_for_file: avoid_redundant_argument_values
@@ -52,12 +54,12 @@ class MockAuthService extends _i1.Mock implements _i4.AuthService {
           as _i2.Logger);
 
   @override
-  _i5.Stream<bool> get authRedirectStream =>
+  _i5.Stream<_i6.SignInResult> get signInResults =>
       (super.noSuchMethod(
-            Invocation.getter(#authRedirectStream),
-            returnValue: _i5.Stream<bool>.empty(),
+            Invocation.getter(#signInResults),
+            returnValue: _i5.Stream<_i6.SignInResult>.empty(),
           )
-          as _i5.Stream<bool>);
+          as _i5.Stream<_i6.SignInResult>);
 
   @override
   _i5.Stream<String> get accessTokenStream =>
@@ -97,20 +99,30 @@ class MockAuthService extends _i1.Mock implements _i4.AuthService {
   );
 
   @override
-  _i5.Future<bool> login(String? username, String? password) =>
+  _i5.Future<_i6.SignInResult> login(String? username, String? password) =>
       (super.noSuchMethod(
             Invocation.method(#login, [username, password]),
-            returnValue: _i5.Future<bool>.value(false),
+            returnValue: _i5.Future<_i6.SignInResult>.value(
+              _i7.dummyValue<_i6.SignInResult>(
+                this,
+                Invocation.method(#login, [username, password]),
+              ),
+            ),
           )
-          as _i5.Future<bool>);
+          as _i5.Future<_i6.SignInResult>);
 
   @override
-  _i5.Future<bool> signUp(String? username, String? password) =>
+  _i5.Future<_i6.SignInResult> signUp(String? username, String? password) =>
       (super.noSuchMethod(
             Invocation.method(#signUp, [username, password]),
-            returnValue: _i5.Future<bool>.value(false),
+            returnValue: _i5.Future<_i6.SignInResult>.value(
+              _i7.dummyValue<_i6.SignInResult>(
+                this,
+                Invocation.method(#signUp, [username, password]),
+              ),
+            ),
           )
-          as _i5.Future<bool>);
+          as _i5.Future<_i6.SignInResult>);
 
   @override
   _i5.Future<bool> initiateGoogleLogin() =>
@@ -121,28 +133,38 @@ class MockAuthService extends _i1.Mock implements _i4.AuthService {
           as _i5.Future<bool>);
 
   @override
-  _i5.Future<bool> initiateAppleLogin() =>
+  _i5.Future<_i6.SignInResult> initiateAppleLogin() =>
       (super.noSuchMethod(
             Invocation.method(#initiateAppleLogin, []),
-            returnValue: _i5.Future<bool>.value(false),
+            returnValue: _i5.Future<_i6.SignInResult>.value(
+              _i7.dummyValue<_i6.SignInResult>(
+                this,
+                Invocation.method(#initiateAppleLogin, []),
+              ),
+            ),
           )
-          as _i5.Future<bool>);
+          as _i5.Future<_i6.SignInResult>);
 
   @override
-  _i5.Future<bool> initiateGoogleNativeLogin() =>
+  _i5.Future<_i6.SignInResult> initiateGoogleNativeLogin() =>
       (super.noSuchMethod(
             Invocation.method(#initiateGoogleNativeLogin, []),
-            returnValue: _i5.Future<bool>.value(false),
+            returnValue: _i5.Future<_i6.SignInResult>.value(
+              _i7.dummyValue<_i6.SignInResult>(
+                this,
+                Invocation.method(#initiateGoogleNativeLogin, []),
+              ),
+            ),
           )
-          as _i5.Future<bool>);
+          as _i5.Future<_i6.SignInResult>);
 
   @override
-  _i5.Future<bool> recoverPassword(String? email) =>
+  _i5.Future<String?> recoverPassword(String? email) =>
       (super.noSuchMethod(
             Invocation.method(#recoverPassword, [email]),
-            returnValue: _i5.Future<bool>.value(false),
+            returnValue: _i5.Future<String?>.value(),
           )
-          as _i5.Future<bool>);
+          as _i5.Future<String?>);
 
   @override
   _i5.Future<void> logout() =>

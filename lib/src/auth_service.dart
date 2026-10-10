@@ -113,9 +113,27 @@ class AuthService {
   String? _currentDeviceID;
   dynamic _currentLastLoginCredentials;
 
-  final StreamController<bool> _authRedirectController =
-      StreamController<bool>.broadcast();
-  Stream<bool> get authRedirectStream => _authRedirectController.stream;
+  final StreamController<SignInResult> _signInResultController =
+      StreamController<SignInResult>.broadcast();
+
+  /// Reports sign-in outcomes to listeners that did not start the attempt.
+  ///
+  /// - Every [SignInSucceeded], from any flow, so the session (AuthBloc) picks
+  ///   up the new tokens.
+  /// - [SignInFailed] and [SignInCancelled] only from the browser redirect
+  ///   flow, which finishes long after [initiateGoogleLogin] has returned and
+  ///   so has no caller to hand its result to.
+  ///
+  /// The direct flows ([login], [signUp], [initiateGoogleNativeLogin],
+  /// [initiateAppleLogin]) return their failure or cancel to the caller
+  /// instead, so a failure is reported exactly once.
+  Stream<SignInResult> get signInResults => _signInResultController.stream;
+
+  static const String _genericSignInFailure = "Couldn't sign in. Try again.";
+  static const String _networkFailure =
+      "Couldn't reach the sign-in server. Check your connection and try again.";
+  static const String _genericRecoveryFailure =
+      "Couldn't send the reset email. Try again.";
 
   final StreamController<String> _accessTokenController =
       StreamController<String>.broadcast();
@@ -226,7 +244,7 @@ class AuthService {
   }
 
   void dispose() {
-    _authRedirectController.close();
+    _signInResultController.close();
     _accessTokenController.close();
     _refreshTokenTimer?.cancel();
     _refreshRetryTimer?.cancel();
@@ -241,13 +259,55 @@ class AuthService {
     _accessTokenController.add(token);
   }
 
+  void _publishSignInResult(SignInResult result) {
+    if (_signInResultController.isClosed) return;
+    _signInResultController.add(result);
+  }
+
+  /// Turns a sign-in error into a message the user can be shown.
+  ///
+  /// [serverWritesForUsers] is true only for the sign-in server's own
+  /// `/login/*` endpoints, whose 4xx answers are hand-written sentences
+  /// ("Invalid email or password", "A user already exists with this email").
+  /// FusionAuth's endpoints answer with JSON for programs, so they never pass
+  /// their body through.
+  static String _userFacingFailure(
+    Object error, {
+    required bool serverWritesForUsers,
+    String fallback = _genericSignInFailure,
+  }) {
+    if (error is TimeoutException || error is http.ClientException) {
+      return _networkFailure;
+    }
+    if (serverWritesForUsers &&
+        error is AuthServerException &&
+        error.statusCode >= 400 &&
+        error.statusCode < 500) {
+      final text = error.body.trim();
+      final looksLikeASentence =
+          text.isNotEmpty &&
+          text.length <= 200 &&
+          !text.startsWith('{') &&
+          !text.startsWith('[') &&
+          !text.startsWith('<');
+      if (looksLikeASentence) return text;
+    }
+    return fallback;
+  }
+
   Future<void> _processAuthRedirect(Uri uri) async {
     try {
       final String? code = uri.queryParameters['code'];
       if (code == null) {
-        log.w('Authorization code not found in redirect URI');
-        _authRedirectController.add(false);
-
+        // OAuth reports a user who declined consent as error=access_denied.
+        final error = uri.queryParameters['error'];
+        if (error == 'access_denied') {
+          log.i('Sign-in redirect reports the user cancelled');
+          _publishSignInResult(const SignInCancelled());
+          return;
+        }
+        log.w('Authorization code not found in redirect URI (error=$error)');
+        _publishSignInResult(const SignInFailed(_genericSignInFailure));
         return;
       }
 
@@ -258,14 +318,18 @@ class AuthService {
       );
       await _storeTokens(tokens);
       log.i('Exchanged code for tokens and stored them successfully');
-      _authRedirectController.add(true);
+      _publishSignInResult(const SignInSucceeded());
     } catch (e) {
       log.e('Failed to handle auth redirect: $e');
-      _authRedirectController.add(false);
+      _publishSignInResult(
+        SignInFailed(_userFacingFailure(e, serverWritesForUsers: false)),
+      );
     }
   }
 
-  Future<bool> login(String username, String password) async {
+  /// Email and password sign-in. Never throws: a failure comes back as
+  /// [SignInFailed] carrying a message safe to show.
+  Future<SignInResult> login(String username, String password) async {
     try {
       final response = await _fusionAuthClient.login(
         username: username,
@@ -274,27 +338,18 @@ class AuthService {
         lastLoginCredentials: _currentLastLoginCredentials,
       );
       await _storeLoginResponse(response);
-
-      return true;
+      _publishSignInResult(const SignInSucceeded());
+      return const SignInSucceeded();
     } catch (e, stackTrace) {
       log.e('Login failed', error: e, stackTrace: stackTrace);
-      String? message;
-      try {
-        final body = json.decode(e.toString());
-        if (body is Map && body.containsKey('message')) {
-          message = body['message'];
-        }
-      } catch (_) {
-        // Fallback to raw error string if not JSON or doesn't have message
-      }
-      if (message != null) {
-        throw message;
-      }
-      rethrow;
+      return SignInFailed(_userFacingFailure(e, serverWritesForUsers: true));
     }
   }
 
-  Future<bool> signUp(String username, String password) async {
+  /// Registers, then signs in. Never throws. The server asks new users to
+  /// verify their email, so the follow-up sign-in usually fails with the
+  /// server's "Please verify your email" sentence, which is passed through.
+  Future<SignInResult> signUp(String username, String password) async {
     try {
       final response = await _httpClient.post(
         Uri.parse('${_config.signupOrigin}/login/register'),
@@ -305,48 +360,20 @@ class AuthService {
           'clientID': _config.loginClientID,
         }),
       );
-
-      if (response.statusCode == 200) {
-        // After successful signup, attempt to log in to get tokens
-        try {
-          final bool loginSuccess = await login(username, password);
-          return loginSuccess;
-        } catch (loginError) {
-          String? message;
-          try {
-            final body = json.decode(response.body);
-            if (body is Map && body.containsKey('message')) {
-              message = body['message'];
-            }
-          } catch (e) {
-            // Ignore decoding errors
-          }
-          if (message != null) {
-            throw message;
-          }
-          rethrow;
-        }
-      } else {
-        log.e('Sign up failed: ${response.body}');
-        try {
-          final body = json.decode(response.body);
-          if (body is Map && body.containsKey('message')) {
-            throw body['message'];
-          }
-        } catch (_) {
-          // If registration body doesn't have a message, throw the raw body
-          throw response.body;
-        }
-        return false;
+      if (response.statusCode != 200) {
+        throw AuthServerException(response.statusCode, response.body);
       }
     } catch (e, stackTrace) {
       log.e('Sign up failed', error: e, stackTrace: stackTrace);
-      rethrow;
+      return SignInFailed(_userFacingFailure(e, serverWritesForUsers: true));
     }
+    return login(username, password);
   }
 
   String? codeVerifier;
 
+  /// Opens the browser sign-in page and returns whether it opened. The
+  /// outcome of the sign-in itself arrives later on [signInResults].
   Future<bool> initiateGoogleLogin() {
     return _initiateSocialLogin(
       idpHint: _config.googleIdentityProviderID,
@@ -357,8 +384,13 @@ class AuthService {
   /// Initiates native Sign in with Apple using [AppleSignInWrapper], then
   /// exchanges the resulting identity token with FusionAuth's IdP login API.
   ///
+  /// Returns [SignInCancelled] when the user dismisses the Apple sheet and
+  /// [SignInFailed] for anything else that goes wrong, including Apple
+  /// returning no identity token. Only success is also published on
+  /// [signInResults].
+  ///
   /// Throws a [StateError] if [LoginConfig.appleIdentityProviderID] is not set.
-  Future<bool> initiateAppleLogin() async {
+  Future<SignInResult> initiateAppleLogin() async {
     final appleIdpID = _config.appleIdentityProviderID;
     if (appleIdpID == null) {
       throw StateError(
@@ -379,7 +411,7 @@ class AuthService {
       final identityToken = credential.identityToken;
       if (identityToken == null) {
         log.w('Apple sign in returned null identity token');
-        return false;
+        return const SignInFailed(_genericSignInFailure);
       }
       try {
         final claims = _jwtDecoder.decode(identityToken);
@@ -402,33 +434,31 @@ class AuthService {
         redirectUri: appleBundleID,
       );
       await _storeTokens(tokens);
-      _authRedirectController.add(true);
-      return true;
+      _publishSignInResult(const SignInSucceeded());
+      return const SignInSucceeded();
     } on SignInWithAppleAuthorizationException catch (e) {
       if (e.code == AuthorizationErrorCode.canceled) {
         log.i('Apple sign in cancelled by user');
-        return false;
+        return const SignInCancelled();
       }
       log.e('Apple sign in failed: ${e.message}');
-      _authRedirectController.add(false);
-      return false;
+      return const SignInFailed(_genericSignInFailure);
     } catch (e, stackTrace) {
       log.e('Apple sign in failed', error: e, stackTrace: stackTrace);
-      _authRedirectController.add(false);
-      return false;
+      return SignInFailed(_userFacingFailure(e, serverWritesForUsers: false));
     }
   }
 
   /// Initiates native Google Sign-In using [GoogleSignInWrapper], then
   /// exchanges the resulting `id_token` with FusionAuth's IdP login API.
   ///
-  /// Structural mirror of [initiateAppleLogin]. Returns true on success. On
-  /// user cancellation or a missing id_token it returns false quietly (no
-  /// `authRedirectStream` event); on any other failure it emits false and
-  /// returns false.
+  /// Structural mirror of [initiateAppleLogin]: [SignInCancelled] when the
+  /// user dismisses the Google sheet, [SignInFailed] for anything else
+  /// (including a missing id_token), and only success is also published on
+  /// [signInResults].
   ///
   /// Throws a [StateError] if [LoginConfig.googleIdentityProviderID] is empty.
-  Future<bool> initiateGoogleNativeLogin() async {
+  Future<SignInResult> initiateGoogleNativeLogin() async {
     final googleIdpID = _config.googleIdentityProviderID;
     if (googleIdpID.isEmpty) {
       throw StateError(
@@ -440,7 +470,7 @@ class AuthService {
       final idToken = await _googleSignIn.getIdToken();
       if (idToken == null) {
         log.w('Google sign in returned null id token');
-        return false;
+        return const SignInFailed(_genericSignInFailure);
       }
       try {
         final claims = _jwtDecoder.decode(idToken);
@@ -461,20 +491,18 @@ class AuthService {
         identityProviderId: googleIdpID,
       );
       await _storeTokens(tokens);
-      _authRedirectController.add(true);
-      return true;
+      _publishSignInResult(const SignInSucceeded());
+      return const SignInSucceeded();
     } on GoogleSignInException catch (e) {
       if (e.code == GoogleSignInExceptionCode.canceled) {
         log.i('Google sign in cancelled by user');
-        return false;
+        return const SignInCancelled();
       }
       log.e('Google sign in failed: ${e.code} ${e.description}');
-      _authRedirectController.add(false);
-      return false;
+      return const SignInFailed(_genericSignInFailure);
     } catch (e, stackTrace) {
       log.e('Google sign in failed', error: e, stackTrace: stackTrace);
-      _authRedirectController.add(false);
-      return false;
+      return SignInFailed(_userFacingFailure(e, serverWritesForUsers: false));
     }
   }
 
@@ -534,24 +562,27 @@ class AuthService {
     return base64Url.encode(sha256Digest.bytes).replaceAll('=', '');
   }
 
-  Future<bool> recoverPassword(String email) async {
+  /// Asks the server to email a password reset link. Returns null on success,
+  /// otherwise a message safe to show the user. Never throws.
+  Future<String?> recoverPassword(String email) async {
     try {
       final response = await _httpClient.post(
         Uri.parse('${_config.signupOrigin}/login/forgot-password'),
         headers: {'content-type': 'application/json'},
         body: json.encode({'email': email}),
       );
-
-      if (response.statusCode == 200) {
-        log.i('Password recovery initiated for: $email');
-        return true;
-      } else {
-        log.e('Password recovery failed: ${response.body}');
-        return false;
+      if (response.statusCode != 200) {
+        throw AuthServerException(response.statusCode, response.body);
       }
+      log.i('Password recovery initiated for: $email');
+      return null;
     } catch (e, stackTrace) {
       log.e('Password recovery failed', error: e, stackTrace: stackTrace);
-      return false;
+      return _userFacingFailure(
+        e,
+        serverWritesForUsers: true,
+        fallback: _genericRecoveryFailure,
+      );
     }
   }
 
@@ -747,8 +778,8 @@ class AuthService {
       }
       // _storeTokens publishes to accessTokenStream, which is what propagates
       // the new token to listeners. Deliberately NOT signalling
-      // _authRedirectController here: this is a silent background refresh, not
-      // a completed redirect, and routing it through the redirect stream makes
+      // signInResults here: this is a silent background refresh, not a
+      // completed sign-in, and publishing SignInSucceeded for it makes
       // AuthBloc re-run AuthCheckStatus — bouncing every listener through
       // AuthLoading (and a redundant secure-storage round-trip) roughly once an
       // hour, for a token the service has already updated in place.

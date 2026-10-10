@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_login/flutter_login.dart';
@@ -10,6 +12,10 @@ import 'auth_bloc/auth_bloc_test.mocks.dart';
 void main() {
   late MockAuthService mockAuthService;
   late AuthBloc authBloc;
+  late StreamController<SignInResult> signInResults;
+
+  // Mockito cannot invent a value of a sealed type for an unstubbed call.
+  provideDummy<SignInResult>(const SignInCancelled());
 
   LoginConfig buildConfig({
     String? appleIdentityProviderID,
@@ -32,8 +38,8 @@ void main() {
     bool useNativeGoogle = true,
   }) {
     when(
-      mockAuthService.authRedirectStream,
-    ).thenAnswer((_) => const Stream.empty());
+      mockAuthService.signInResults,
+    ).thenAnswer((_) => signInResults.stream);
     when(
       mockAuthService.accessTokenStream,
     ).thenAnswer((_) => const Stream.empty());
@@ -46,6 +52,7 @@ void main() {
   }
 
   setUp(() {
+    signInResults = StreamController<SignInResult>.broadcast();
     mockAuthService = MockAuthService();
     stubAuthService();
     authBloc = AuthBloc(authService: mockAuthService);
@@ -53,6 +60,7 @@ void main() {
 
   tearDown(() async {
     await authBloc.close();
+    await signInResults.close();
   });
 
   Widget wrap(Widget child) {
@@ -188,7 +196,7 @@ void main() {
     (tester) async {
       when(
         mockAuthService.initiateGoogleNativeLogin(),
-      ).thenAnswer((_) async => true);
+      ).thenAnswer((_) async => const SignInSucceeded());
       final flutterLogin = await capture(
         tester,
         const LoginPage(title: 'Test App'),
@@ -262,23 +270,33 @@ void main() {
     ) async {
       when(
         mockAuthService.initiateGoogleNativeLogin(),
-      ).thenAnswer((_) async => true);
+      ).thenAnswer((_) async => const SignInSucceeded());
       final google = await providerNamed(tester, 'Continue with Google');
       expect(await google.callback(), isNull);
     });
 
-    testWidgets('native Google reports failure — silently — when cancelled', (
-      tester,
-    ) async {
+    testWidgets('native Google stays silent when cancelled', (tester) async {
       when(
         mockAuthService.initiateGoogleNativeLogin(),
-      ).thenAnswer((_) async => false);
+      ).thenAnswer((_) async => const SignInCancelled());
       final google = await providerNamed(tester, 'Continue with Google');
       final error = await google.callback();
       // Non-null so flutter_login does not animate the user into the app...
       expect(error, isNotNull);
       // ...but excluded so a deliberate cancel does not raise a toast.
       expect(google.errorsToExcludeFromErrorMessage, contains(error));
+    });
+
+    testWidgets('native Google shows the message when sign-in fails', (
+      tester,
+    ) async {
+      when(
+        mockAuthService.initiateGoogleNativeLogin(),
+      ).thenAnswer((_) async => const SignInFailed("Couldn't sign in. Try again."));
+      final google = await providerNamed(tester, 'Continue with Google');
+      final error = await google.callback();
+      expect(error, "Couldn't sign in. Try again.");
+      expect(google.errorsToExcludeFromErrorMessage, isNot(contains(error)));
     });
 
     testWidgets('web Google reports no error once the browser is launched', (
@@ -306,20 +324,142 @@ void main() {
 
     testWidgets('Apple reports no error when sign-in succeeds', (tester) async {
       stubAuthService(appleIdentityProviderID: 'apple-idp');
-      when(mockAuthService.initiateAppleLogin()).thenAnswer((_) async => true);
+      when(
+        mockAuthService.initiateAppleLogin(),
+      ).thenAnswer((_) async => const SignInSucceeded());
       final apple = await providerNamed(tester, 'Apple');
       expect(await apple.callback(), isNull);
     });
 
-    testWidgets('Apple reports failure — silently — when cancelled', (
-      tester,
-    ) async {
+    testWidgets('Apple stays silent when cancelled', (tester) async {
       stubAuthService(appleIdentityProviderID: 'apple-idp');
-      when(mockAuthService.initiateAppleLogin()).thenAnswer((_) async => false);
+      when(
+        mockAuthService.initiateAppleLogin(),
+      ).thenAnswer((_) async => const SignInCancelled());
       final apple = await providerNamed(tester, 'Apple');
       final error = await apple.callback();
       expect(error, isNotNull);
       expect(apple.errorsToExcludeFromErrorMessage, contains(error));
+    });
+
+    testWidgets('Apple shows the message when sign-in fails', (tester) async {
+      stubAuthService(appleIdentityProviderID: 'apple-idp');
+      when(
+        mockAuthService.initiateAppleLogin(),
+      ).thenAnswer((_) async => const SignInFailed("Couldn't sign in. Try again."));
+      final apple = await providerNamed(tester, 'Apple');
+      final error = await apple.callback();
+      expect(error, "Couldn't sign in. Try again.");
+      expect(apple.errorsToExcludeFromErrorMessage, isNot(contains(error)));
+    });
+  });
+
+  group('email and password', () {
+    testWidgets('a wrong password comes back as the message to show', (
+      tester,
+    ) async {
+      when(
+        mockAuthService.login('a@b.c', 'pw'),
+      ).thenAnswer((_) async => const SignInFailed('Invalid email or password'));
+      final flutterLogin = await capture(
+        tester,
+        const LoginPage(title: 'Test App'),
+      );
+      expect(
+        await flutterLogin.onLogin(const LoginData(name: 'a@b.c', password: 'pw')),
+        'Invalid email or password',
+      );
+    });
+
+    testWidgets('a successful sign-in reports no error', (tester) async {
+      when(
+        mockAuthService.login('a@b.c', 'pw'),
+      ).thenAnswer((_) async => const SignInSucceeded());
+      final flutterLogin = await capture(
+        tester,
+        const LoginPage(title: 'Test App'),
+      );
+      expect(
+        await flutterLogin.onLogin(const LoginData(name: 'a@b.c', password: 'pw')),
+        isNull,
+      );
+    });
+
+    testWidgets('a refused sign-up comes back as the message to show', (
+      tester,
+    ) async {
+      when(mockAuthService.signUp('a@b.c', 'pw')).thenAnswer(
+        (_) async =>
+            const SignInFailed('A user already exists with this email'),
+      );
+      final flutterLogin = await capture(
+        tester,
+        const LoginPage(title: 'Test App'),
+      );
+      expect(
+        await flutterLogin.onSignup!(const SignupData.fromSignupForm(
+          name: 'a@b.c',
+          password: 'pw',
+        )),
+        'A user already exists with this email',
+      );
+    });
+
+    testWidgets('a failed sign-in leaves the session state alone', (
+      tester,
+    ) async {
+      when(
+        mockAuthService.login('a@b.c', 'pw'),
+      ).thenAnswer((_) async => const SignInFailed('Invalid email or password'));
+      final flutterLogin = await capture(
+        tester,
+        const LoginPage(title: 'Test App'),
+      );
+      final before = authBloc.state;
+      await flutterLogin.onLogin(const LoginData(name: 'a@b.c', password: 'pw'));
+      await tester.pump();
+      expect(authBloc.state, before);
+    });
+  });
+
+  group('browser sign-in that finishes later', () {
+    Future<void> pumpPage(WidgetTester tester) async {
+      stubAuthService(useNativeGoogle: false);
+      await tester.pumpWidget(
+        wrap(const Scaffold(body: LoginPage(title: 'Test App'))),
+      );
+    }
+
+    Future<void> tearDownPage(WidgetTester tester) async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 30));
+    }
+
+    testWidgets('a failed exchange shows the message on the login page', (
+      tester,
+    ) async {
+      await pumpPage(tester);
+      final before = authBloc.state;
+
+      signInResults.add(const SignInFailed("Couldn't sign in. Try again."));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text("Couldn't sign in. Try again."), findsOneWidget);
+      expect(find.byType(LoginPage), findsOneWidget);
+      expect(authBloc.state, before);
+      await tearDownPage(tester);
+    });
+
+    testWidgets('a cancel shows nothing', (tester) async {
+      await pumpPage(tester);
+
+      signInResults.add(const SignInCancelled());
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byType(SnackBar), findsNothing);
+      await tearDownPage(tester);
     });
   });
 

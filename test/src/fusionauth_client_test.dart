@@ -87,7 +87,7 @@ void main() {
           username: 'test@example.com',
           password: 'password123',
         ),
-        throwsA(isA<String>()),
+        throwsA(isA<AuthServerException>()),
       );
     });
 
@@ -155,7 +155,7 @@ void main() {
             'test@example.com',
             'password123',
           ),
-          throwsA(isA<String>()),
+          throwsA(isA<AuthServerException>()),
         );
       },
     );
@@ -207,7 +207,7 @@ void main() {
 
       expect(
         () => fusionAuthClient.refreshTokenGrant('mock_refresh_token'),
-        throwsA(isA<String>()),
+        throwsA(isA<AuthServerException>()),
       );
     });
 
@@ -269,7 +269,7 @@ void main() {
           'mock_code',
           'mock_code_verifier',
         ),
-        throwsA(isA<String>()),
+        throwsA(isA<AuthServerException>()),
       );
     });
 
@@ -340,7 +340,7 @@ void main() {
             identityProviderId: 'apple-idp-uuid',
             redirectUri: 'xyz.twoseven.app.flutterRemoteControl',
           ),
-          throwsA(isA<String>()),
+          throwsA(isA<AuthServerException>()),
         );
       });
     });
@@ -403,7 +403,7 @@ void main() {
             idToken: 'bad_token',
             identityProviderId: 'google-idp-uuid',
           ),
-          throwsA(isA<String>()),
+          throwsA(isA<AuthServerException>()),
         );
       });
     });

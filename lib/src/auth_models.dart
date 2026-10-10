@@ -1,4 +1,40 @@
-import 'dart:convert';
+/// The outcome of one sign-in attempt.
+///
+/// Cancelling and failing are separate on purpose: a cancel is the user's own
+/// choice and stays silent, while a failure must tell the user something.
+sealed class SignInResult {
+  const SignInResult();
+}
+
+class SignInSucceeded extends SignInResult {
+  const SignInSucceeded();
+}
+
+/// The user backed out (dismissed the provider sheet or the consent screen).
+class SignInCancelled extends SignInResult {
+  const SignInCancelled();
+}
+
+class SignInFailed extends SignInResult {
+  /// Safe to show the user as-is. Never a raw exception or server payload.
+  final String message;
+
+  const SignInFailed(this.message);
+}
+
+/// A non-200 answer from the sign-in server or FusionAuth.
+///
+/// Carries the status code so callers can tell a rejected request (4xx) from
+/// a server fault, which a bare body string could not.
+class AuthServerException implements Exception {
+  final int statusCode;
+  final String body;
+
+  AuthServerException(this.statusCode, this.body);
+
+  @override
+  String toString() => 'HTTP $statusCode: $body';
+}
 
 class TokenResponse {
   final String accessToken;

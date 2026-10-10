@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:bloc/bloc.dart';
 import 'package:liblogin/src/auth_service.dart';
 import 'package:liblogin/src/auth_models.dart';
-import 'package:equatable/equatable.dart'; // Added equatable import
+import 'package:equatable/equatable.dart';
 
 part 'auth_event.dart';
 part 'auth_state.dart';
@@ -11,13 +11,16 @@ part 'auth_state.dart';
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final AuthService authService;
 
-  StreamSubscription<bool>? _authRedirectSubscription;
+  StreamSubscription<SignInResult>? _signInResultSubscription;
   StreamSubscription<String>? _accessTokenSubscription;
 
   AuthBloc({required this.authService}) : super(AuthInitial()) {
-    _authRedirectSubscription =
-        authService.authRedirectStream.listen((success) {
-      if (success) {
+    // Only a success changes the session. A failed or cancelled attempt is
+    // shown on the login page and must not move the session state, or a
+    // consumer that treats AuthError as "signed out" reacts as if it were a
+    // logout.
+    _signInResultSubscription = authService.signInResults.listen((result) {
+      if (result is SignInSucceeded) {
         add(AuthCheckStatus());
       }
     });
@@ -42,59 +45,6 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         idToken: authService.currentIdToken,
         decodedAccessToken: decoded,
       ));
-    });
-
-    on<AuthLogin>((event, emit) async {
-      try {
-        emit(AuthLoading());
-        final success = await authService.login(event.username, event.password);
-        if (success && authService.currentAccessToken != null) {
-          emit(AuthAuthenticated(
-            accessToken: authService.currentAccessToken!,
-            idToken: authService.currentIdToken,
-            decodedAccessToken: authService.decodedAccessToken!,
-          ));
-        } else {
-          emit(AuthError(message: 'Login failed'));
-        }
-      } catch (e) {
-        emit(AuthError(message: e.toString()));
-      }
-    });
-
-    on<AuthSignUp>((event, emit) async {
-      try {
-        emit(AuthLoading());
-        final success = await authService.signUp(
-          event.username,
-          event.password,
-        );
-        if (success && authService.currentAccessToken != null) {
-          emit(AuthAuthenticated(
-            accessToken: authService.currentAccessToken!,
-            idToken: authService.currentIdToken,
-            decodedAccessToken: authService.decodedAccessToken!,
-          ));
-        } else {
-          emit(AuthError(message: 'Sign up failed'));
-        }
-      } catch (e) {
-        emit(AuthError(message: e.toString()));
-      }
-    });
-
-    on<AuthRecoverPassword>((event, emit) async {
-      try {
-        emit(AuthLoading());
-        final success = await authService.recoverPassword(event.email);
-        if (success) {
-          emit(AuthRecoverPasswordSuccess());
-        } else {
-          emit(AuthError(message: 'Password recovery failed'));
-        }
-      } catch (e) {
-        emit(AuthError(message: e.toString()));
-      }
     });
 
     on<AuthLogout>((event, emit) async {
@@ -127,7 +77,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
 
   @override
   Future<void> close() async {
-    await _authRedirectSubscription?.cancel();
+    await _signInResultSubscription?.cancel();
     await _accessTokenSubscription?.cancel();
     authService.dispose();
     return super.close();

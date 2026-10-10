@@ -4,21 +4,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_login/flutter_login.dart';
 import 'package:liblogin/src/auth_bloc/auth_bloc.dart';
+import 'package:liblogin/src/auth_models.dart';
+import 'package:liblogin/src/auth_service.dart';
 
-/// Returned by a social-provider callback when sign-in did not complete — the
-/// user dismissed the provider sheet, or the provider itself failed.
+/// Returned by a social-provider callback when the user cancelled.
 ///
-/// flutter_login treats a `null` return as "the user is now signed in" and runs
-/// its post-login transition on the strength of it. Returning this sentinel
-/// instead keeps that transition from firing, while
-/// [LoginProvider.errorsToExcludeFromErrorMessage] suppresses the error toast
-/// so a deliberate cancel stays silent.
-const String _signInNotCompleted = 'liblogin:sign-in-not-completed';
+/// flutter_login reads `null` as "signed in" and any other string as an error
+/// to show, so a cancel needs a string of its own that
+/// [LoginProvider.errorsToExcludeFromErrorMessage] keeps silent.
+const String _signInCancelled = 'liblogin:sign-in-cancelled';
 
 /// Shown when the external browser could not be launched for the web OAuth
-/// flow. Unlike [_signInNotCompleted] this is a genuine failure the user needs
-/// to see, so it is not excluded from the error toast.
-const String _couldNotOpenSignIn = 'Could not open the sign-in page.';
+/// flow.
+const String _couldNotOpenSignIn = "Couldn't open the sign-in page. Try again.";
+
+/// What a flutter_login callback returns for a finished attempt: null for
+/// success, the failure message to show, or the silent cancel marker.
+String? _formReply(SignInResult result) => switch (result) {
+  SignInSucceeded() => null,
+  SignInCancelled() => _signInCancelled,
+  SignInFailed(:final message) => message,
+};
 
 class LoginPage extends StatelessWidget {
   final String title;
@@ -99,12 +105,13 @@ class LoginPage extends StatelessWidget {
         button: Buttons.google,
         label: 'Continue with Google',
         animated: useNativeGoogle,
-        errorsToExcludeFromErrorMessage: const [_signInNotCompleted],
+        errorsToExcludeFromErrorMessage: const [_signInCancelled],
         callback: () async {
           if (useNativeGoogle) {
-            final signedIn = await authService.initiateGoogleNativeLogin();
-            return signedIn ? null : _signInNotCompleted;
+            return _formReply(await authService.initiateGoogleNativeLogin());
           }
+          // The browser flow finishes later; its outcome is shown by
+          // _RedirectFailureMessenger, not through this return value.
           final launched = await authService.initiateGoogleLogin();
           return launched ? null : _couldNotOpenSignIn;
         },
@@ -119,11 +126,9 @@ class LoginPage extends StatelessWidget {
           // callback, so success here is real and the post-login transition is
           // truthful. A cancelled or failed attempt must still report failure
           // rather than null, or flutter_login animates away regardless.
-          errorsToExcludeFromErrorMessage: const [_signInNotCompleted],
-          callback: () async {
-            final signedIn = await authService.initiateAppleLogin();
-            return signedIn ? null : _signInNotCompleted;
-          },
+          errorsToExcludeFromErrorMessage: const [_signInCancelled],
+          callback: () async =>
+              _formReply(await authService.initiateAppleLogin()),
         ),
       );
     }
@@ -132,17 +137,9 @@ class LoginPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocListener<AuthBloc, AuthState>(
-      listener: (context, state) {
-        if (state is AuthError) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.message),
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-          );
-        }
-      },
+    final authService = context.read<AuthBloc>().authService;
+    return _RedirectFailureMessenger(
+      authService: authService,
       child: FlutterLogin(
         title: title,
         logo: logo,
@@ -154,71 +151,74 @@ class LoginPage extends StatelessWidget {
         hideUserNamePasswordLogin: !enableEmailPassword,
         loginProviders: _resolveProviders(context),
         termsOfService: termsOfService,
-        onLogin: (loginData) async {
-          final bloc = context.read<AuthBloc>();
-          final completer = Completer<String?>();
-
-          late StreamSubscription subscription;
-          subscription = bloc.stream.listen((state) {
-            if (state is AuthAuthenticated) {
-              completer.complete(null);
-              subscription.cancel();
-            } else if (state is AuthError) {
-              completer.complete(state.message);
-              subscription.cancel();
-            }
-          });
-
-          bloc.add(
-            AuthLogin(username: loginData.name, password: loginData.password),
-          );
-
-          return completer.future;
-        },
-        onSignup: (signupData) async {
-          final bloc = context.read<AuthBloc>();
-          final completer = Completer<String?>();
-
-          late StreamSubscription subscription;
-          subscription = bloc.stream.listen((state) {
-            if (state is AuthAuthenticated) {
-              completer.complete(null);
-              subscription.cancel();
-            } else if (state is AuthError) {
-              completer.complete(state.message);
-              subscription.cancel();
-            }
-          });
-
-          bloc.add(
-            AuthSignUp(
-              username: signupData.name!,
-              password: signupData.password!,
-            ),
-          );
-
-          return completer.future;
-        },
-        onRecoverPassword: (email) async {
-          final bloc = context.read<AuthBloc>();
-          final completer = Completer<String?>();
-
-          late StreamSubscription subscription;
-          subscription = bloc.stream.listen((state) {
-            if (state is AuthRecoverPasswordSuccess) {
-              completer.complete(null);
-              subscription.cancel();
-            } else if (state is AuthError) {
-              completer.complete(state.message);
-              subscription.cancel();
-            }
-          });
-
-          bloc.add(AuthRecoverPassword(email: email));
-
-          return completer.future;
-        },
+        // Each attempt resolves inside its callback, so flutter_login shows a
+        // failure in its own error banner. The session state is untouched
+        // unless the attempt succeeds.
+        onLogin: (loginData) async => _formReply(
+          await authService.login(loginData.name, loginData.password),
+        ),
+        onSignup: (signupData) async => _formReply(
+          await authService.signUp(signupData.name!, signupData.password!),
+        ),
+        onRecoverPassword: authService.recoverPassword,
       ),
     );
   }
+}
+
+/// Shows a failed browser sign-in. That flow returns to the app through a
+/// redirect long after the Google button's callback has finished, so no
+/// flutter_login callback is left to report it.
+class _RedirectFailureMessenger extends StatefulWidget {
+  final AuthService authService;
+  final Widget child;
+
+  const _RedirectFailureMessenger({
+    required this.authService,
+    required this.child,
+  });
+
+  @override
+  State<_RedirectFailureMessenger> createState() =>
+      _RedirectFailureMessengerState();
+}
+
+class _RedirectFailureMessengerState extends State<_RedirectFailureMessenger> {
+  StreamSubscription<SignInResult>? _subscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _subscribe();
+  }
+
+  @override
+  void didUpdateWidget(_RedirectFailureMessenger oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.authService != widget.authService) {
+      _subscription?.cancel();
+      _subscribe();
+    }
+  }
+
+  void _subscribe() {
+    _subscription = widget.authService.signInResults.listen((result) {
+      if (result is! SignInFailed || !mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.message),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
