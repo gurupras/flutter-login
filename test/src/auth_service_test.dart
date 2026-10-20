@@ -113,6 +113,9 @@ void main() {
         when(
           mockSecureStorage.read(key: 'idToken'),
         ).thenAnswer((_) async => null);
+        when(
+          mockSecureStorage.read(key: 'email'),
+        ).thenAnswer((_) async => null);
 
         authService = AuthService(
           config: config,
@@ -246,6 +249,108 @@ void main() {
           ).called(1);
         },
       );
+
+      group('currentEmail', () {
+        void stubLogin(LoginResponse response) {
+          when(
+            mockFusionAuthClient.login(
+              username: anyNamed('username'),
+              password: anyNamed('password'),
+              scope: anyNamed('scope'),
+              lastLoginCredentials: anyNamed('lastLoginCredentials'),
+              device: anyNamed('device'),
+            ),
+          ).thenAnswer((_) async => response);
+          when(mockJwtDecoder.decode('access')).thenReturn({
+            'sub': 'user123',
+            'exp': (DateTime.now().millisecondsSinceEpoch ~/ 1000) + 3600,
+          });
+          when(
+            mockSecureStorage.write(
+              key: anyNamed('key'),
+              value: anyNamed('value'),
+            ),
+          ).thenAnswer((_) async => {});
+        }
+
+        test('comes from the login response user', () async {
+          stubLogin(LoginResponse(
+            accessToken: 'access',
+            user: {'id': 'user123', 'email': 'a@example.com'},
+          ));
+
+          await authService.login('user', 'pass');
+          async.elapse(const Duration(hours: 1));
+
+          expect(authService.currentEmail, 'a@example.com');
+          verify(
+            mockSecureStorage.write(key: 'email', value: 'a@example.com'),
+          ).called(1);
+        });
+
+        test('falls back to the id token email claim', () async {
+          stubLogin(LoginResponse(
+            accessToken: 'access',
+            idToken: 'id',
+            user: {'id': 'user123'},
+          ));
+          when(mockJwtDecoder.decode('id')).thenReturn({'email': 'b@example.com'});
+
+          await authService.login('user', 'pass');
+          async.elapse(const Duration(hours: 1));
+
+          expect(authService.currentEmail, 'b@example.com');
+        });
+
+        test('is null when nothing says it', () async {
+          stubLogin(LoginResponse(
+            accessToken: 'access',
+            user: {'id': 'user123'},
+          ));
+
+          await authService.login('user', 'pass');
+          async.elapse(const Duration(hours: 1));
+
+          expect(authService.currentEmail, isNull);
+          verifyNever(
+            mockSecureStorage.write(key: 'email', value: anyNamed('value')),
+          );
+        });
+
+        test('is read back on init', () async {
+          when(
+            mockSecureStorage.read(key: 'deviceID'),
+          ).thenAnswer((_) async => 'device');
+          when(
+            mockSecureStorage.read(key: 'lastLoginCredentials'),
+          ).thenAnswer((_) async => null);
+          when(
+            mockSecureStorage.read(key: 'email'),
+          ).thenAnswer((_) async => 'c@example.com');
+
+          await authService.init();
+          async.elapse(Duration.zero);
+
+          expect(authService.currentEmail, 'c@example.com');
+        });
+
+        test('is cleared on logout', () async {
+          stubLogin(LoginResponse(
+            accessToken: 'access',
+            user: {'id': 'user123', 'email': 'a@example.com'},
+          ));
+          when(
+            mockSecureStorage.delete(key: anyNamed('key')),
+          ).thenAnswer((_) async => {});
+          await authService.login('user', 'pass');
+
+          await authService.logout();
+          async.elapse(Duration.zero);
+
+          expect(authService.currentEmail, isNull);
+          verify(mockSecureStorage.delete(key: 'email')).called(1);
+        });
+      });
 
       void stubLoginThrows(Object error) {
         when(
@@ -1614,6 +1719,7 @@ void main() {
               expiresIn: 3600,
               tokenType: 'Bearer',
               userID: 'google_user_123',
+              email: 'g@example.com',
               refreshToken: 'google_refresh',
             );
             when(
@@ -1642,6 +1748,7 @@ void main() {
 
             expect(result, isA<SignInSucceeded>());
             expect(published, [isA<SignInSucceeded>()]);
+            expect(authService.currentEmail, 'g@example.com');
             verify(
               mockFusionAuthClient.googleIdpLogin(
                 idToken: 'google_id_token',

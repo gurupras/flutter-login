@@ -44,6 +44,10 @@ class TokenResponse {
   final String tokenType;
   final String? userID;
 
+  /// The account's email when the response names it (FusionAuth's
+  /// identity-provider login returns it in `user`); null otherwise.
+  final String? email;
+
   /// The server-side `/login/refresh-tokens` path ROTATES this credential on
   /// every call and returns the NEW one here. It MUST be persisted and used on
   /// the next refresh, or FusionAuth rejects the stale one with
@@ -58,6 +62,7 @@ class TokenResponse {
     this.refreshToken,
     required this.tokenType,
     this.userID,
+    this.email,
     this.lastLoginCredentials,
   });
 

@@ -93,6 +93,7 @@ class AuthService {
   static const String _idTokenKey = 'idToken';
   static const String _refreshTokenKey = 'refreshToken';
   static const String _userIDKey = 'userID';
+  static const String _emailKey = 'email';
   static const String _lastLoginCredentialsKey = 'lastLoginCredentials';
 
   final log = Logger(
@@ -112,6 +113,7 @@ class AuthService {
   String? _currentRefreshToken;
   String? _currentDeviceID;
   dynamic _currentLastLoginCredentials;
+  String? _currentEmail;
 
   final StreamController<SignInResult> _signInResultController =
       StreamController<SignInResult>.broadcast();
@@ -151,6 +153,12 @@ class AuthService {
 
   String? get currentAccessToken => _currentAccessToken;
   String? get currentIdToken => _currentIdToken;
+
+  /// The signed-in account's email, for showing who is signed in. Taken from
+  /// the login response's user, or from an id token's `email` claim, and kept
+  /// across restarts; null until a sign-in has said it. The access token does
+  /// not carry it.
+  String? get currentEmail => _currentEmail;
   dynamic get lastLoginCredentials => _currentLastLoginCredentials;
 
   /// Read-only access to the [LoginConfig] used to construct this service.
@@ -229,6 +237,7 @@ class AuthService {
       await _secureStorage.write(key: _deviceIDKey, value: _currentDeviceID);
     }
     _currentIdToken = await _secureStorage.read(key: _idTokenKey);
+    _currentEmail = await _secureStorage.read(key: _emailKey);
     _currentLastLoginCredentials = await _secureStorage.read(
       key: _lastLoginCredentialsKey,
     );
@@ -591,8 +600,10 @@ class AuthService {
     await _secureStorage.delete(key: _idTokenKey);
     await _secureStorage.delete(key: _refreshTokenKey);
     await _secureStorage.delete(key: _userIDKey);
+    await _secureStorage.delete(key: _emailKey);
     await _secureStorage.delete(key: _lastLoginCredentialsKey);
     _currentAccessToken = null;
+    _currentEmail = null;
     _currentIdToken = null;
     _currentRefreshToken = null;
     _currentLastLoginCredentials = null;
@@ -634,9 +645,30 @@ class AuthService {
     final decoded = _jwtDecoder.decode(response.accessToken);
     final userID = decoded['sub'] as String;
     await _secureStorage.write(key: _userIDKey, value: userID);
+    await _storeEmail(
+      response.user?['email'] as String? ?? _emailOf(response.idToken),
+    );
 
     _scheduleTokenRefresh();
     _publishAccessToken(response.accessToken);
+  }
+
+  /// The `email` claim of [idToken], or null.
+  String? _emailOf(String? idToken) {
+    if (idToken == null) return null;
+    try {
+      final email = _jwtDecoder.decode(idToken)['email'];
+      return email is String ? email : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Keeps [email] as [currentEmail] when it says one; null leaves it as is.
+  Future<void> _storeEmail(String? email) async {
+    if (email == null || email.trim().isEmpty) return;
+    _currentEmail = email.trim();
+    await _secureStorage.write(key: _emailKey, value: _currentEmail);
   }
 
   Future<void> _storeTokens(TokenResponse tokens) async {
@@ -684,6 +716,8 @@ class AuthService {
     if (userID != null) {
       await _secureStorage.write(key: _userIDKey, value: userID);
     }
+    // A refresh usually has no id token; the email from the sign-in stays.
+    await _storeEmail(tokens.email ?? _emailOf(tokens.idToken));
 
     _scheduleTokenRefresh();
     _publishAccessToken(tokens.accessToken);

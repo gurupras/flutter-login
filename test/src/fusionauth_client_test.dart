@@ -281,6 +281,7 @@ void main() {
           'tokenType': 'Bearer',
           'expiresIn': 3600,
           'userId': 'apple_user_id',
+          'user': {'id': 'apple_user_id', 'email': 'apple@example.com'},
         };
 
         when(
@@ -305,6 +306,7 @@ void main() {
         expect(tokenResponse.tokenType, 'Bearer');
         expect(tokenResponse.expiresIn, 3600);
         expect(tokenResponse.userID, 'apple_user_id');
+        expect(tokenResponse.email, 'apple@example.com');
 
         verify(
           mockHttpClient.post(
@@ -353,6 +355,7 @@ void main() {
           'tokenType': 'Bearer',
           'expiresIn': 3600,
           'userId': 'google_user_id',
+          'user': {'id': 'google_user_id', 'email': 'google@example.com'},
         };
 
         when(
@@ -375,6 +378,7 @@ void main() {
         expect(tokenResponse.tokenType, 'Bearer');
         expect(tokenResponse.expiresIn, 3600);
         expect(tokenResponse.userID, 'google_user_id');
+        expect(tokenResponse.email, 'google@example.com');
 
         verify(
           mockHttpClient.post(

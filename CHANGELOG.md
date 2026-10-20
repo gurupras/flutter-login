@@ -1,3 +1,14 @@
+## 0.19.1
+
+* **New: `AuthService.currentEmail`.** The signed-in account's email, so an app
+  can show who is signed in. The access token does not carry it under
+  FusionAuth's Strict scope handling. It comes from the `user` that the
+  password and native Apple or Google sign-ins return, or from the browser
+  sign-in's id token `email` claim. It is kept in secure storage across
+  restarts, survives refreshes, and is cleared on logout. `TokenResponse` gains
+  `email` for the native sign-ins.
+  A session signed in before 0.19.1 has no email until its next sign-in.
+
 ## 0.19.0
 
 * **Fix: a failed sign-in now tells the user.** When the browser sign-in's code

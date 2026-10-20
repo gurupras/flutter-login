@@ -161,6 +161,7 @@ class FusionAuthClient {
         refreshToken: response['refreshToken'] as String?,
         tokenType: (response['tokenType'] as String?) ?? 'Bearer',
         userID: response['userId'] as String?,
+        email: (response['user'] as Map<String, dynamic>?)?['email'] as String?,
       );
     } else {
       throw AuthServerException(result.statusCode, result.body);
@@ -199,6 +200,7 @@ class FusionAuthClient {
         refreshToken: response['refreshToken'] as String?,
         tokenType: (response['tokenType'] as String?) ?? 'Bearer',
         userID: response['userId'] as String?,
+        email: (response['user'] as Map<String, dynamic>?)?['email'] as String?,
       );
     } else {
       throw AuthServerException(result.statusCode, result.body);
