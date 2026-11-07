@@ -1,3 +1,23 @@
+## 0.20.0
+
+Additive. `checkLoginStatus` and the default `AuthBloc` are unchanged.
+
+- `restoreSession()`: loads the stored session with no network and deletes
+  nothing. `AuthBloc(offlineFirst: true)` uses it for status checks.
+- `refreshNow()`: a forced refresh shared by every entry point, limited to 20
+  seconds, answering `RefreshOutcome`. Only `invalid_grant` from `/oauth2/token`
+  counts as refused. `refreshOutcomes` and `lastRefreshOutcome` report it.
+- The proactive refresh stops retrying on a refusal.
+- A refresh that outlives a sign-in or log out stores nothing. A refresh naming
+  another account is discarded.
+- A sign-in replaces the whole token slot, so the old account's keys cannot
+  survive under the new one.
+- `cancelPendingSignIn()` drops a running attempt and a later browser redirect.
+  The email form has a 20 second limit and no longer shows a raw cancel string.
+- `LoginPage` gains `leading` and `savedEmail`.
+- `beginSessionChange()` and `adoptStoredSessionIfChanged()` for apps that move
+  tokens themselves or share storage between tabs.
+
 ## 0.19.1
 
 * **New: `AuthService.currentEmail`.** The signed-in account's email, so an app

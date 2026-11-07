@@ -18,13 +18,19 @@ const String _signInCancelled = 'liblogin:sign-in-cancelled';
 /// flow.
 const String _couldNotOpenSignIn = "Couldn't open the sign-in page. Try again.";
 
-/// What a flutter_login callback returns for a finished attempt: null for
-/// success, the failure message to show, or the silent cancel marker.
+/// What a flutter_login provider callback returns for a finished attempt: null
+/// for success, the failure message to show, or the silent cancel marker.
 String? _formReply(SignInResult result) => switch (result) {
   SignInSucceeded() => null,
   SignInCancelled() => _signInCancelled,
   SignInFailed(:final message) => message,
 };
+
+/// The same for the email form, which has no silent-error list: it would show
+/// the cancel marker as text. A form attempt is only ever cancelled by leaving
+/// the page, so there is nothing left to tell anyone.
+String? _emailFormReply(SignInResult result) =>
+    result is SignInCancelled ? null : _formReply(result);
 
 class LoginPage extends StatelessWidget {
   final String title;
@@ -52,6 +58,14 @@ class LoginPage extends StatelessWidget {
   /// Forwarded to [FlutterLogin.hideProvidersTitle].
   final bool hideProvidersTitle;
 
+  /// Forwarded to [FlutterLogin.savedEmail], to start the form on a known
+  /// account.
+  final String savedEmail;
+
+  /// Placed over the page's top-left corner, for a way back out such as
+  /// "Not now". Null when the page is the only way forward.
+  final Widget? leading;
+
   const LoginPage({
     super.key,
     this.title = 'App',
@@ -64,6 +78,8 @@ class LoginPage extends StatelessWidget {
     this.headerWidget,
     this.footer,
     this.hideProvidersTitle = false,
+    this.savedEmail = '',
+    this.leading,
   }) : assert(
          // A null [socialProviders] means "use the built-in defaults", which
          // always include Google, so it can never strand the user on a login
@@ -138,7 +154,7 @@ class LoginPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authService = context.read<AuthBloc>().authService;
-    return _RedirectFailureMessenger(
+    final form = _RedirectFailureMessenger(
       authService: authService,
       child: FlutterLogin(
         title: title,
@@ -148,20 +164,31 @@ class LoginPage extends StatelessWidget {
         headerWidget: headerWidget,
         footer: footer,
         hideProvidersTitle: hideProvidersTitle,
+        savedEmail: savedEmail,
         hideUserNamePasswordLogin: !enableEmailPassword,
         loginProviders: _resolveProviders(context),
         termsOfService: termsOfService,
         // Each attempt resolves inside its callback, so flutter_login shows a
         // failure in its own error banner. The session state is untouched
         // unless the attempt succeeds.
-        onLogin: (loginData) async => _formReply(
+        onLogin: (loginData) async => _emailFormReply(
           await authService.login(loginData.name, loginData.password),
         ),
-        onSignup: (signupData) async => _formReply(
+        onSignup: (signupData) async => _emailFormReply(
           await authService.signUp(signupData.name!, signupData.password!),
         ),
         onRecoverPassword: authService.recoverPassword,
       ),
+    );
+    final corner = leading;
+    if (corner == null) return form;
+    return Stack(
+      children: [
+        form,
+        SafeArea(
+          child: Align(alignment: Alignment.topLeft, child: corner),
+        ),
+      ],
     );
   }
 }

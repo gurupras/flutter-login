@@ -77,6 +77,38 @@ void main() {
     );
 
     blocTest<AuthBloc, AuthState>(
+      'offlineFirst: a stored session is authenticated with no status check',
+      build: () {
+        when(mockAuthService.restoreSession()).thenAnswer((_) async => true);
+        when(mockAuthService.currentAccessToken).thenReturn('expired_token');
+        when(mockAuthService.currentIdToken).thenReturn(null);
+        when(mockAuthService.decodedAccessToken).thenReturn(mockDecodedToken);
+        return AuthBloc(authService: mockAuthService, offlineFirst: true);
+      },
+      act: (bloc) => bloc.add(AuthCheckStatus()),
+      expect: () => [
+        AuthLoading(),
+        AuthAuthenticated(
+          accessToken: 'expired_token',
+          decodedAccessToken: mockDecodedToken,
+        ),
+      ],
+      verify: (_) {
+        verifyNever(mockAuthService.checkLoginStatus());
+      },
+    );
+
+    blocTest<AuthBloc, AuthState>(
+      'offlineFirst: nothing stored is unauthenticated',
+      build: () {
+        when(mockAuthService.restoreSession()).thenAnswer((_) async => false);
+        return AuthBloc(authService: mockAuthService, offlineFirst: true);
+      },
+      act: (bloc) => bloc.add(AuthCheckStatus()),
+      expect: () => [AuthLoading(), AuthUnauthenticated()],
+    );
+
+    blocTest<AuthBloc, AuthState>(
       'emits [AuthLoading, AuthUnauthenticated] when AuthCheckStatus is unauthenticated',
       build: () {
         when(mockAuthService.checkLoginStatus()).thenAnswer((_) async => false);

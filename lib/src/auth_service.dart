@@ -114,6 +114,9 @@ class AuthService {
   String? _currentDeviceID;
   dynamic _currentLastLoginCredentials;
   String? _currentEmail;
+  // Stored with the session, so the account stays known when the access token
+  // is missing or unreadable.
+  String? _currentUserID;
 
   final StreamController<SignInResult> _signInResultController =
       StreamController<SignInResult>.broadcast();
@@ -151,6 +154,19 @@ class AuthService {
   /// service has already refreshed it behind the scenes.
   Stream<String> get accessTokenStream => _accessTokenController.stream;
 
+  final StreamController<RefreshOutcome> _refreshOutcomeController =
+      StreamController<RefreshOutcome>.broadcast();
+
+  /// The outcome of every refresh, including the silent timer-driven ones, so
+  /// an app learns the login was refused without having asked.
+  Stream<RefreshOutcome> get refreshOutcomes =>
+      _refreshOutcomeController.stream;
+
+  /// The current session's latest refresh outcome, null when it has had none.
+  /// Lets a listener that arrives late know what it missed.
+  RefreshOutcome? get lastRefreshOutcome => _lastRefreshOutcome;
+  RefreshOutcome? _lastRefreshOutcome;
+
   String? get currentAccessToken => _currentAccessToken;
   String? get currentIdToken => _currentIdToken;
 
@@ -166,17 +182,87 @@ class AuthService {
   /// duplicating config plumbing.
   LoginConfig get config => _config;
 
+  /// The session's claims. A missing or unreadable access token still answers
+  /// with the stored user id, so the account stays known until a refresh.
   DecodedAccessToken? get decodedAccessToken {
-    if (_currentAccessToken == null) {
-      return null;
+    final token = _currentAccessToken;
+    if (token != null) {
+      try {
+        return DecodedAccessToken.fromJson(_jwtDecoder.decode(token));
+      } catch (e) {
+        log.w('Stored access token is unreadable: $e');
+      }
     }
-    return DecodedAccessToken.fromJson(
-      _jwtDecoder.decode(_currentAccessToken!),
-    );
+    final userID = _currentUserID;
+    return userID == null ? null : DecodedAccessToken(sub: userID);
+  }
+
+  /// The account the current tokens belong to, or null when none is known.
+  String? get _currentSubject {
+    final token = _currentAccessToken;
+    if (token != null) {
+      try {
+        final sub = _jwtDecoder.decode(token)['sub'];
+        if (sub is String) return sub;
+      } catch (_) {
+        // An unreadable token says nothing. The stored id still does.
+      }
+    }
+    return _currentUserID;
   }
 
   Timer? _refreshTokenTimer;
-  bool _isRefreshing = false;
+
+  /// One overall limit for a refresh, whichever routes it tries.
+  static const Duration refreshBudget = Duration(seconds: 20);
+
+  /// A limit on a form sign-in, so a stalled connection cannot hold the form.
+  static const Duration _signInTimeLimit = Duration(seconds: 20);
+
+  // The one refresh running now. Every entry point shares it.
+  Future<RefreshOutcome>? _refreshInFlight;
+
+  // Bumped by sign-in, log out and a session restore. A refresh that started
+  // under an older value stores and publishes nothing.
+  int _authGeneration = 0;
+
+  // Token writes run one at a time, so a refresh landing mid sign-in cannot
+  // leave one account's keys mixed with another's.
+  Future<void>? _tokenWrites;
+
+  Future<T> _serialised<T>(Future<T> Function() body) {
+    final previous = _tokenWrites;
+    final result = previous == null ? body() : previous.then((_) => body());
+    final tail = result.then<void>((_) {}, onError: (Object _) {});
+    _tokenWrites = tail;
+    tail.whenComplete(() {
+      if (identical(_tokenWrites, tail)) _tokenWrites = null;
+    });
+    return result;
+  }
+
+  void _bumpAuthGeneration() {
+    _authGeneration++;
+    _refreshInFlight = null;
+    _lastRefreshOutcome = null;
+  }
+
+  /// Call before an app moves another account's tokens into the slot itself,
+  /// then call [restoreSession]. A refresh still running stores nothing, so it
+  /// cannot write the old account's tokens over the new ones.
+  Future<void> beginSessionChange() async {
+    _bumpAuthGeneration();
+    _refreshTokenTimer?.cancel();
+    _refreshRetryTimer?.cancel();
+    _nextRefreshRetryDelay = _initialRefreshRetryDelay;
+    await _tokenWrites;
+  }
+
+  // Bumped when the person backs out of signing in. An attempt that started
+  // under an older value stores nothing and answers [SignInCancelled].
+  int _signInAttempt = 0;
+  bool _browserAttemptPending = false;
+  bool _dropNextRedirect = false;
 
   // Self-healing retry for the proactive refresh. When a scheduled refresh
   // fails (transient network error, device was Dozing at fire time, …) we do
@@ -238,6 +324,10 @@ class AuthService {
     }
     _currentIdToken = await _secureStorage.read(key: _idTokenKey);
     _currentEmail = await _secureStorage.read(key: _emailKey);
+    await _loadLastLoginCredentials();
+  }
+
+  Future<void> _loadLastLoginCredentials() async {
     _currentLastLoginCredentials = await _secureStorage.read(
       key: _lastLoginCredentialsKey,
     );
@@ -255,6 +345,7 @@ class AuthService {
   void dispose() {
     _signInResultController.close();
     _accessTokenController.close();
+    _refreshOutcomeController.close();
     _refreshTokenTimer?.cancel();
     _refreshRetryTimer?.cancel();
   }
@@ -305,6 +396,13 @@ class AuthService {
   }
 
   Future<void> _processAuthRedirect(Uri uri) async {
+    final attempt = _signInAttempt;
+    _browserAttemptPending = false;
+    if (_dropNextRedirect) {
+      _dropNextRedirect = false;
+      log.i('Dropping a browser sign-in the user already backed out of');
+      return;
+    }
     try {
       final String? code = uri.queryParameters['code'];
       if (code == null) {
@@ -325,7 +423,11 @@ class AuthService {
         code,
         codeVerifier!,
       );
-      await _storeTokens(tokens);
+      if (attempt != _signInAttempt) {
+        log.i('Dropping a browser sign-in the user already backed out of');
+        return;
+      }
+      await _replaceSessionWithTokens(tokens);
       log.i('Exchanged code for tokens and stored them successfully');
       _publishSignInResult(const SignInSucceeded());
     } catch (e) {
@@ -339,13 +441,17 @@ class AuthService {
   /// Email and password sign-in. Never throws: a failure comes back as
   /// [SignInFailed] carrying a message safe to show.
   Future<SignInResult> login(String username, String password) async {
+    final attempt = _signInAttempt;
     try {
-      final response = await _fusionAuthClient.login(
-        username: username,
-        password: password,
-        scope: 'openid email offline_access',
-        lastLoginCredentials: _currentLastLoginCredentials,
-      );
+      final response = await _fusionAuthClient
+          .login(
+            username: username,
+            password: password,
+            scope: 'openid email offline_access',
+            lastLoginCredentials: _currentLastLoginCredentials,
+          )
+          .timeout(_signInTimeLimit);
+      if (attempt != _signInAttempt) return const SignInCancelled();
       await _storeLoginResponse(response);
       _publishSignInResult(const SignInSucceeded());
       return const SignInSucceeded();
@@ -415,6 +521,7 @@ class AuthService {
         'initiateAppleLogin().',
       );
     }
+    final attempt = _signInAttempt;
     try {
       final credential = await _appleSignIn.getCredential();
       final identityToken = credential.identityToken;
@@ -442,7 +549,8 @@ class AuthService {
         identityProviderId: appleIdpID,
         redirectUri: appleBundleID,
       );
-      await _storeTokens(tokens);
+      if (attempt != _signInAttempt) return const SignInCancelled();
+      await _replaceSessionWithTokens(tokens);
       _publishSignInResult(const SignInSucceeded());
       return const SignInSucceeded();
     } on SignInWithAppleAuthorizationException catch (e) {
@@ -475,6 +583,7 @@ class AuthService {
         'Set it before calling initiateGoogleNativeLogin().',
       );
     }
+    final attempt = _signInAttempt;
     try {
       final idToken = await _googleSignIn.getIdToken();
       if (idToken == null) {
@@ -499,7 +608,8 @@ class AuthService {
         idToken: idToken,
         identityProviderId: googleIdpID,
       );
-      await _storeTokens(tokens);
+      if (attempt != _signInAttempt) return const SignInCancelled();
+      await _replaceSessionWithTokens(tokens);
       _publishSignInResult(const SignInSucceeded());
       return const SignInSucceeded();
     } on GoogleSignInException catch (e) {
@@ -519,6 +629,8 @@ class AuthService {
     required String idpHint,
     required String providerLabel,
   }) async {
+    _browserAttemptPending = true;
+    _dropNextRedirect = false;
     try {
       codeVerifier = AuthService.generateCodeVerifier();
       final codeChallenge = AuthService.generateCodeChallenge(codeVerifier!);
@@ -595,62 +707,104 @@ class AuthService {
     }
   }
 
+  /// The person backed out of signing in. Whatever is still running stores
+  /// nothing, and a browser redirect that arrives later is dropped.
+  void cancelPendingSignIn() {
+    _signInAttempt++;
+    if (_browserAttemptPending) _dropNextRedirect = true;
+  }
+
   Future<void> logout() async {
-    await _secureStorage.delete(key: _accessTokenKey);
-    await _secureStorage.delete(key: _idTokenKey);
-    await _secureStorage.delete(key: _refreshTokenKey);
-    await _secureStorage.delete(key: _userIDKey);
-    await _secureStorage.delete(key: _emailKey);
-    await _secureStorage.delete(key: _lastLoginCredentialsKey);
-    _currentAccessToken = null;
-    _currentEmail = null;
-    _currentIdToken = null;
-    _currentRefreshToken = null;
-    _currentLastLoginCredentials = null;
+    _bumpAuthGeneration();
     _refreshTokenTimer?.cancel();
     _refreshRetryTimer?.cancel();
     _nextRefreshRetryDelay = _initialRefreshRetryDelay;
+    await _serialised(() async {
+      await _secureStorage.delete(key: _accessTokenKey);
+      await _secureStorage.delete(key: _idTokenKey);
+      await _secureStorage.delete(key: _refreshTokenKey);
+      await _secureStorage.delete(key: _userIDKey);
+      await _secureStorage.delete(key: _emailKey);
+      await _secureStorage.delete(key: _lastLoginCredentialsKey);
+      _currentAccessToken = null;
+      _currentEmail = null;
+      _currentIdToken = null;
+      _currentRefreshToken = null;
+      _currentLastLoginCredentials = null;
+      _currentUserID = null;
+    });
   }
 
   Future<void> _storeLoginResponse(LoginResponse response) async {
-    _currentAccessToken = response.accessToken;
-    _currentIdToken = response.idToken;
-    _currentRefreshToken = response.refreshToken;
-    _currentLastLoginCredentials = response.lastLoginCredentials;
-
-    await _secureStorage.write(
-      key: _accessTokenKey,
-      value: response.accessToken,
+    // A password login's token always names its user. Read it before touching
+    // the slot, so a bad response leaves the old session whole.
+    final userID = _jwtDecoder.decode(response.accessToken)['sub'] as String;
+    await _replaceSession(
+      accessToken: response.accessToken,
+      idToken: response.idToken,
+      refreshToken: response.refreshToken,
+      lastLoginCredentials: response.lastLoginCredentials,
+      userID: userID,
+      email: response.user?['email'] as String? ?? _emailOf(response.idToken),
     );
-    if (response.idToken != null) {
-      await _secureStorage.write(
-        key: _idTokenKey,
-        value: response.idToken,
-      );
-    }
-    if (response.refreshToken != null) {
-      await _secureStorage.write(
-        key: _refreshTokenKey,
-        value: response.refreshToken,
-      );
-    }
-    if (response.lastLoginCredentials != null) {
-      final value = response.lastLoginCredentials is String
-          ? response.lastLoginCredentials
-          : json.encode(response.lastLoginCredentials);
-      await _secureStorage.write(key: _lastLoginCredentialsKey, value: value);
-    }
+  }
 
-    // Extract userID from decoded token or user object
-    final decoded = _jwtDecoder.decode(response.accessToken);
-    final userID = decoded['sub'] as String;
-    await _secureStorage.write(key: _userIDKey, value: userID);
-    await _storeEmail(
-      response.user?['email'] as String? ?? _emailOf(response.idToken),
+  Future<void> _replaceSessionWithTokens(TokenResponse tokens) {
+    return _replaceSession(
+      accessToken: tokens.accessToken,
+      idToken: tokens.idToken,
+      refreshToken: tokens.refreshToken,
+      lastLoginCredentials: tokens.lastLoginCredentials,
+      userID:
+          tokens.userID ??
+          _jwtDecoder.decode(tokens.accessToken)['sub'] as String?,
+      email: tokens.email ?? _emailOf(tokens.idToken),
     );
+  }
 
-    _scheduleTokenRefresh();
-    _publishAccessToken(response.accessToken);
+  /// A sign-in replaces the whole token slot: a key the new session lacks is
+  /// deleted, so the old account's credentials cannot renew under the new one.
+  Future<void> _replaceSession({
+    required String accessToken,
+    required String? idToken,
+    required String? refreshToken,
+    required dynamic lastLoginCredentials,
+    required String? userID,
+    required String? email,
+  }) {
+    _bumpAuthGeneration();
+    return _serialised(() async {
+      _currentAccessToken = accessToken;
+      _currentIdToken = idToken;
+      _currentRefreshToken = refreshToken;
+      _currentLastLoginCredentials = lastLoginCredentials;
+      _currentUserID = userID;
+      final cleanEmail = email?.trim();
+      _currentEmail = cleanEmail == null || cleanEmail.isEmpty
+          ? null
+          : cleanEmail;
+
+      await _secureStorage.write(key: _accessTokenKey, value: accessToken);
+      await _writeOrDelete(_idTokenKey, idToken);
+      await _writeOrDelete(_refreshTokenKey, refreshToken);
+      await _writeOrDelete(
+        _lastLoginCredentialsKey,
+        lastLoginCredentials == null || lastLoginCredentials is String
+            ? lastLoginCredentials as String?
+            : json.encode(lastLoginCredentials),
+      );
+      await _writeOrDelete(_userIDKey, userID);
+      await _writeOrDelete(_emailKey, _currentEmail);
+
+      _scheduleTokenRefresh();
+      _publishAccessToken(accessToken);
+    });
+  }
+
+  Future<void> _writeOrDelete(String key, String? value) {
+    return value == null
+        ? _secureStorage.delete(key: key)
+        : _secureStorage.write(key: key, value: value);
   }
 
   /// The `email` claim of [idToken], or null.
@@ -675,9 +829,8 @@ class AuthService {
     _currentAccessToken = tokens.accessToken;
     _currentIdToken = tokens.idToken;
     // Only adopt a refresh token when the response actually carries one. A
-    // refresh response may omit it (the server-side /login/refresh-tokens path
-    // returns a rotated lastLoginCredentials instead), and nulling a good
-    // in-memory refresh token would strand the next refresh on the wrong path.
+    // refresh response may omit it, and nulling a good in-memory refresh token
+    // would strand the next refresh on the wrong route.
     if (tokens.refreshToken != null) {
       _currentRefreshToken = tokens.refreshToken;
     }
@@ -695,10 +848,8 @@ class AuthService {
         value: tokens.refreshToken,
       );
     }
-    // Persist the ROTATED lastLoginCredentials so the next server-side refresh
-    // uses the fresh credential. Without this the second refresh re-sends a
-    // consumed one and FusionAuth answers refresh_token_not_found. Mirrors
-    // _storeLoginResponse.
+    // Keep whatever lastLoginCredentials the server sends back. The backend
+    // reissues the blob but nothing in it rotates, so an older copy still works.
     if (tokens.lastLoginCredentials != null) {
       _currentLastLoginCredentials = tokens.lastLoginCredentials;
       final value = tokens.lastLoginCredentials is String
@@ -714,6 +865,7 @@ class AuthService {
     }
 
     if (userID != null) {
+      _currentUserID = userID;
       await _secureStorage.write(key: _userIDKey, value: userID);
     }
     // A refresh usually has no id token; the email from the sign-in stays.
@@ -767,66 +919,132 @@ class AuthService {
     }
   }
 
+  /// Refreshes now, whatever the token's age, sharing one run with every other
+  /// entry point. Never throws, never deletes, and answers within
+  /// [refreshBudget]. Reads the tokens [restoreSession] or a sign-in loaded.
+  Future<RefreshOutcome> refreshNow() {
+    final running = _refreshInFlight;
+    if (running != null) return running;
+    final run = _budgetedRefresh(_authGeneration);
+    _refreshInFlight = run;
+    run.whenComplete(() {
+      if (identical(_refreshInFlight, run)) _refreshInFlight = null;
+    });
+    return run;
+  }
+
+  Future<RefreshOutcome> _budgetedRefresh(int generation) async {
+    RefreshOutcome outcome;
+    try {
+      // A reply that lands after the limit is still stored if the session has
+      // not changed: nothing rotates, so it is simply a good token.
+      outcome = await _refreshOnce(generation).timeout(refreshBudget);
+    } catch (e) {
+      log.w('Token refresh got no usable answer: ${e.runtimeType}');
+      outcome = RefreshOutcome.unreachable;
+    }
+    log.i('Token refresh finished: ${outcome.name}');
+    if (outcome != RefreshOutcome.superseded) _lastRefreshOutcome = outcome;
+    if (!_refreshOutcomeController.isClosed) {
+      _refreshOutcomeController.add(outcome);
+    }
+    return outcome;
+  }
+
+  /// Only `invalid_grant` from `/oauth2/token` proves a login is dead.
+  static bool _isRefusal(AuthServerException e) {
+    if (e.statusCode != 400) return false;
+    try {
+      final body = json.decode(e.body);
+      return body is Map && body['error'] == 'invalid_grant';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<RefreshOutcome> _refreshOnce(int generation) async {
+    bool stale() => generation != _authGeneration;
+    final refreshToken = _currentRefreshToken;
+    final credentials = _currentLastLoginCredentials;
+    final expectedSubject = _currentSubject;
+
+    TokenResponse? tokens;
+    var failure = RefreshOutcome.noPath;
+    if (refreshToken != null) {
+      try {
+        tokens = await _fusionAuthClient.oauthRefreshTokenGrant(refreshToken);
+      } on AuthServerException catch (e) {
+        if (_isRefusal(e)) {
+          return stale() ? RefreshOutcome.superseded : RefreshOutcome.refused;
+        }
+        log.w('OAuth refresh failed with HTTP ${e.statusCode}');
+        failure = RefreshOutcome.unreachable;
+      } catch (e) {
+        log.w('OAuth refresh failed: ${e.runtimeType}');
+        failure = RefreshOutcome.unreachable;
+      }
+    }
+    // The server-side route renews logins with no refresh token, and still
+    // covers a confidential client, which FusionAuth answers with
+    // invalid_client on the route above.
+    if (tokens == null && credentials != null && !stale()) {
+      try {
+        tokens = await _fusionAuthClient.refreshTokenGrant(credentials);
+      } on AuthServerException catch (e) {
+        log.w('Server-side refresh failed with HTTP ${e.statusCode}');
+        // 400 is what this route says for a dead login and an outage alike.
+        if (e.statusCode != 400) failure = RefreshOutcome.unreachable;
+      } catch (e) {
+        log.w('Server-side refresh failed: ${e.runtimeType}');
+        failure = RefreshOutcome.unreachable;
+      }
+    }
+    if (stale()) return RefreshOutcome.superseded;
+    final received = tokens;
+    if (received == null) return failure;
+
+    return _serialised(() async {
+      if (stale()) return RefreshOutcome.superseded;
+      final subject =
+          received.userID ??
+          _jwtDecoder.decode(received.accessToken)['sub'] as String?;
+      if (subject != null &&
+          expectedSubject != null &&
+          subject != expectedSubject) {
+        log.e('[INTEGRITY] Discarded a refresh for a different account');
+        return RefreshOutcome.unreachable;
+      }
+      // _storeTokens publishes to accessTokenStream, which is what propagates
+      // the new token. Deliberately NOT signalling signInResults: a silent
+      // refresh is not a completed sign-in, and publishing SignInSucceeded for
+      // it makes AuthBloc bounce every listener through AuthLoading.
+      await _storeTokens(received);
+      return RefreshOutcome.renewed;
+    });
+  }
+
   Future<void> _attemptTokenRefresh() async {
-    if (_isRefreshing) {
+    if (_refreshInFlight != null) {
       log.d('Refresh already in progress. Skipping.');
       return;
     }
-    _isRefreshing = true;
-    try {
-      log.i('Attempting proactive token refresh...');
-      TokenResponse? newTokens;
-      Object? oauthError;
-      if (_currentRefreshToken != null) {
-        try {
-          newTokens = await _fusionAuthClient.oauthRefreshTokenGrant(
-            _currentRefreshToken!,
-          );
-        } catch (e) {
-          // A confidential client cannot use the public refresh-token grant
-          // (FusionAuth answers invalid_client), so a native-form login that
-          // stored both a refresh token and lastLoginCredentials must fall back
-          // to the server-side refresh, exactly as checkLoginStatus does.
-          // Without this every proactive refresh fails the same way and the
-          // access token expires in place.
-          if (_currentLastLoginCredentials == null) rethrow;
-          oauthError = e;
-          log.w('OAuth refresh failed ($e); trying server-side refresh.');
-        }
-      }
-      if (newTokens == null) {
-        if (_currentLastLoginCredentials == null) {
-          log.w('No refresh credentials available for proactive refresh.');
-          return;
-        }
-        try {
-          newTokens = await _fusionAuthClient.refreshTokenGrant(
-            _currentLastLoginCredentials!,
-          );
-        } catch (e) {
-          if (oauthError != null) {
-            throw 'OAuth refresh: $oauthError; server-side refresh: $e';
-          }
-          rethrow;
-        }
-      }
-      // _storeTokens publishes to accessTokenStream, which is what propagates
-      // the new token to listeners. Deliberately NOT signalling
-      // signInResults here: this is a silent background refresh, not a
-      // completed sign-in, and publishing SignInSucceeded for it makes
-      // AuthBloc re-run AuthCheckStatus — bouncing every listener through
-      // AuthLoading (and a redundant secure-storage round-trip) roughly once an
-      // hour, for a token the service has already updated in place.
-      await _storeTokens(newTokens);
-    } catch (e) {
-      // Do NOT swallow the failure: a single missed refresh would strand the
-      // token stale for the rest of the process. Re-arm a bounded backoff so a
-      // transient outage recovers on its own. (On success, _storeTokens ->
-      // _scheduleTokenRefresh resets this state and restores the normal timer.)
-      log.e('Proactive token refresh failed: $e');
-      _scheduleRefreshRetry();
-    } finally {
-      _isRefreshing = false;
+    log.i('Attempting proactive token refresh...');
+    final hadCredentials =
+        _currentRefreshToken != null || _currentLastLoginCredentials != null;
+    final outcome = await refreshNow();
+    switch (outcome) {
+      case RefreshOutcome.renewed || RefreshOutcome.superseded:
+        // _storeTokens rescheduled, or the new session armed its own timer.
+        break;
+      case RefreshOutcome.refused:
+        log.w('The login was refused. Proactive refresh stops here.');
+      case RefreshOutcome.noPath when !hadCredentials:
+        log.w('No refresh credentials available for proactive refresh.');
+      case RefreshOutcome.unreachable || RefreshOutcome.noPath:
+        // Do NOT give up: a single missed refresh would strand the token stale
+        // for the rest of the process. On success, _storeTokens ->
+        // _scheduleTokenRefresh resets this state.
+        _scheduleRefreshRetry();
     }
   }
 
@@ -850,6 +1068,53 @@ class AuthService {
     _nextRefreshRetryDelay = nextMs >= _maxRefreshRetryDelay.inMilliseconds
         ? _maxRefreshRetryDelay
         : Duration(milliseconds: nextMs);
+  }
+
+  /// Loads the stored session with no network, and reports whether one exists.
+  /// A session is any stored tokens that name an account: an expired access
+  /// token is still a session, and so is a missing or unreadable one with a
+  /// stored user id. Renewal runs behind this and reports on [refreshOutcomes].
+  ///
+  /// Unlike [checkLoginStatus], this never deletes anything and never waits on
+  /// the server.
+  Future<bool> restoreSession() async {
+    await beginSessionChange();
+    _currentAccessToken = await _secureStorage.read(key: _accessTokenKey);
+    _currentIdToken = await _secureStorage.read(key: _idTokenKey);
+    _currentRefreshToken = await _secureStorage.read(key: _refreshTokenKey);
+    _currentUserID = await _secureStorage.read(key: _userIDKey);
+    _currentEmail = await _secureStorage.read(key: _emailKey);
+    await _loadLastLoginCredentials();
+
+    if (_currentSubject == null) return false;
+
+    var readable = false;
+    if (_currentAccessToken != null) {
+      try {
+        _jwtDecoder.decode(_currentAccessToken!);
+        readable = true;
+      } catch (_) {
+        // Handled below: an unreadable token is renewed like a missing one.
+      }
+    }
+    if (readable) {
+      _scheduleTokenRefresh();
+    } else {
+      unawaited(_attemptTokenRefresh());
+    }
+    return true;
+  }
+
+  /// Picks up tokens another tab or process stored, with no network. Answers
+  /// whether the stored session differed from the one held here.
+  Future<bool> adoptStoredSessionIfChanged() async {
+    final access = await _secureStorage.read(key: _accessTokenKey);
+    final refresh = await _secureStorage.read(key: _refreshTokenKey);
+    if (access == _currentAccessToken && refresh == _currentRefreshToken) {
+      return false;
+    }
+    await restoreSession();
+    return true;
   }
 
   Future<bool> checkLoginStatus() async {

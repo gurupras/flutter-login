@@ -11,10 +11,16 @@ part 'auth_state.dart';
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final AuthService authService;
 
+  /// Decide "signed in" from the tokens on the device, with no network wait,
+  /// and leave renewal to run behind it ([AuthService.restoreSession]). Off, a
+  /// status check keeps going through [AuthService.checkLoginStatus].
+  final bool offlineFirst;
+
   StreamSubscription<SignInResult>? _signInResultSubscription;
   StreamSubscription<String>? _accessTokenSubscription;
 
-  AuthBloc({required this.authService}) : super(AuthInitial()) {
+  AuthBloc({required this.authService, this.offlineFirst = false})
+    : super(AuthInitial()) {
     // Only a success changes the session. A failed or cancelled attempt is
     // shown on the login page and must not move the session state, or a
     // consumer that treats AuthError as "signed out" reacts as if it were a
@@ -59,10 +65,15 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AuthCheckStatus>((event, emit) async {
       try {
         emit(AuthLoading());
-        final isAuthenticated = await authService.checkLoginStatus();
-        if (isAuthenticated && authService.currentAccessToken != null) {
+        final isAuthenticated = offlineFirst
+            ? await authService.restoreSession()
+            : await authService.checkLoginStatus();
+        // With offlineFirst, a session can be known by its stored user id
+        // while the access token is missing, until a refresh brings one.
+        if (isAuthenticated &&
+            (offlineFirst || authService.currentAccessToken != null)) {
           emit(AuthAuthenticated(
-            accessToken: authService.currentAccessToken!,
+            accessToken: authService.currentAccessToken ?? '',
             idToken: authService.currentIdToken,
             decodedAccessToken: authService.decodedAccessToken!,
           ));

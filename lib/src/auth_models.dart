@@ -22,6 +22,32 @@ class SignInFailed extends SignInResult {
   const SignInFailed(this.message);
 }
 
+/// What one [AuthService.refreshNow] came to. Tokens are never deleted by a
+/// refresh, whatever the answer: who is signed in and whether the login still
+/// renews are separate facts.
+enum RefreshOutcome {
+  /// A new access token is stored and published.
+  renewed,
+
+  /// No answer that says anything about the login: no network, a timeout, a
+  /// 5xx, a 429, or a body that is not what the server should have sent. Try
+  /// again later.
+  unreachable,
+
+  /// The server said this login is dead (`invalid_grant` from `/oauth2/token`).
+  /// Only signing in again helps.
+  refused,
+
+  /// Nothing on this device can renew the login, or the one route left cannot
+  /// tell a dead login from an outage. `/login/refresh-tokens` answers
+  /// `400 "Failed"` for both, so this never claims a refusal.
+  noPath,
+
+  /// A sign-in or log out replaced the session while this ran. Nothing was
+  /// stored and the answer is about a session that has gone.
+  superseded,
+}
+
 /// A non-200 answer from the sign-in server or FusionAuth.
 ///
 /// Carries the status code so callers can tell a rejected request (4xx) from

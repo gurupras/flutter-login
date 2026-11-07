@@ -70,6 +70,14 @@ class MockAuthService extends _i1.Mock implements _i4.AuthService {
           as _i5.Stream<String>);
 
   @override
+  _i5.Stream<_i6.RefreshOutcome> get refreshOutcomes =>
+      (super.noSuchMethod(
+            Invocation.getter(#refreshOutcomes),
+            returnValue: _i5.Stream<_i6.RefreshOutcome>.empty(),
+          )
+          as _i5.Stream<_i6.RefreshOutcome>);
+
+  @override
   _i3.LoginConfig get config =>
       (super.noSuchMethod(
             Invocation.getter(#config),
@@ -82,6 +90,15 @@ class MockAuthService extends _i1.Mock implements _i4.AuthService {
     Invocation.setter(#codeVerifier, value),
     returnValueForMissingStub: null,
   );
+
+  @override
+  _i5.Future<void> beginSessionChange() =>
+      (super.noSuchMethod(
+            Invocation.method(#beginSessionChange, []),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
 
   @override
   _i5.Future<void> init() =>
@@ -167,6 +184,12 @@ class MockAuthService extends _i1.Mock implements _i4.AuthService {
           as _i5.Future<String?>);
 
   @override
+  void cancelPendingSignIn() => super.noSuchMethod(
+    Invocation.method(#cancelPendingSignIn, []),
+    returnValueForMissingStub: null,
+  );
+
+  @override
   _i5.Future<void> logout() =>
       (super.noSuchMethod(
             Invocation.method(#logout, []),
@@ -174,6 +197,32 @@ class MockAuthService extends _i1.Mock implements _i4.AuthService {
             returnValueForMissingStub: _i5.Future<void>.value(),
           )
           as _i5.Future<void>);
+
+  @override
+  _i5.Future<_i6.RefreshOutcome> refreshNow() =>
+      (super.noSuchMethod(
+            Invocation.method(#refreshNow, []),
+            returnValue: _i5.Future<_i6.RefreshOutcome>.value(
+              _i6.RefreshOutcome.renewed,
+            ),
+          )
+          as _i5.Future<_i6.RefreshOutcome>);
+
+  @override
+  _i5.Future<bool> restoreSession() =>
+      (super.noSuchMethod(
+            Invocation.method(#restoreSession, []),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<bool> adoptStoredSessionIfChanged() =>
+      (super.noSuchMethod(
+            Invocation.method(#adoptStoredSessionIfChanged, []),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
 
   @override
   _i5.Future<bool> checkLoginStatus() =>
