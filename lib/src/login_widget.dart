@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_login/flutter_login.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:liblogin/src/auth_bloc/auth_bloc.dart';
 import 'package:liblogin/src/auth_models.dart';
 import 'package:liblogin/src/auth_service.dart';
@@ -119,6 +120,15 @@ class LoginPage extends StatelessWidget {
         // A full Google row keeps the brand and action together; native-only
         // animation preserves the upstream web-flow completion behavior.
         button: Buttons.google,
+        // An icon routes every provider through flutter_login's one row
+        // button, so all of them share its size. The package's own Google
+        // button is taller than its Apple one.
+        iconWidget: SvgPicture.asset(
+          'assets/logos/google.svg',
+          package: 'flutter_login',
+          width: 20,
+          height: 20,
+        ),
         label: 'Continue with Google',
         animated: useNativeGoogle,
         errorsToExcludeFromErrorMessage: const [_signInCancelled],
@@ -137,6 +147,7 @@ class LoginPage extends StatelessWidget {
       providers.add(
         LoginProvider(
           button: Buttons.apple,
+          icon: Icons.apple,
           label: 'Apple',
           // Sign in with Apple is native and resolves fully inside the
           // callback, so success here is real and the post-login transition is

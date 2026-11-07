@@ -15,6 +15,9 @@ Additive. `checkLoginStatus` and the default `AuthBloc` are unchanged.
 - `cancelPendingSignIn()` drops a running attempt and a later browser redirect.
   The email form has a 20 second limit and no longer shows a raw cancel string.
 - `LoginPage` gains `leading` and `savedEmail`.
+- The default Google and Apple buttons are the same size. Both use
+  flutter_login's row button, with the bundled Google logo and the Material
+  Apple icon. `flutter_svg` is now a direct dependency.
 - `beginSessionChange()` and `adoptStoredSessionIfChanged()` for apps that move
   tokens themselves or share storage between tabs.
 

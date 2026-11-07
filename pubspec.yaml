@@ -27,6 +27,8 @@ dependencies:
   # v6, and GoogleSignInWrapper in auth_service.dart targets v7.
   google_sign_in: ^7.2.0
   sign_in_with_apple: ^6.1.0
+  # Draws the Google logo bundled with flutter_login on the provider row.
+  flutter_svg: ^2.0.0
   flutter_vector_icons: ^2.0.0
   jwt_decoder: ^2.0.1
   url_launcher: ^6.3.0

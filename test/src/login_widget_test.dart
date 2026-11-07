@@ -111,6 +111,23 @@ void main() {
     },
   );
 
+  testWidgets('the Google and Apple buttons are the same size', (tester) async {
+    stubAuthService(appleIdentityProviderID: 'apple-idp');
+    await tester.pumpWidget(wrap(const LoginPage(title: 'Test App')));
+    await tester.pump(const Duration(seconds: 5));
+
+    Size buttonSize(String label) => tester.getSize(
+      find.ancestor(
+        of: find.text(label),
+        matching: find.byType(MaterialButton),
+      ),
+    );
+    expect(buttonSize('Continue with Google'), buttonSize('Apple'));
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 30));
+  });
+
   testWidgets('omits the Apple provider when appleIdentityProviderID is null', (
     tester,
   ) async {
@@ -475,7 +492,7 @@ void main() {
     'allows a null socialProviders with email/password disabled — the default '
     'providers are non-empty, so the page is still reachable',
     () {
-      expect(() => LoginPage(enableEmailPassword: false), returnsNormally);
+      expect(() => const LoginPage(enableEmailPassword: false), returnsNormally);
     },
   );
 
