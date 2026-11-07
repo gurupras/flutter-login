@@ -1,3 +1,8 @@
+## 0.20.1
+
+- The default Apple button reads "Continue with Apple", one of the labels
+  Apple's guidelines allow, matching "Continue with Google".
+
 ## 0.20.0
 
 Additive. `checkLoginStatus` and the default `AuthBloc` are unchanged.

@@ -148,7 +148,7 @@ class LoginPage extends StatelessWidget {
         LoginProvider(
           button: Buttons.apple,
           icon: Icons.apple,
-          label: 'Apple',
+          label: 'Continue with Apple',
           // Sign in with Apple is native and resolves fully inside the
           // callback, so success here is real and the post-login transition is
           // truthful. A cancelled or failed attempt must still report failure

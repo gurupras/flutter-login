@@ -105,7 +105,7 @@ void main() {
       );
       expect(flutterLogin.loginProviders.map((p) => p.label), [
         'Continue with Google',
-        'Apple',
+        'Continue with Apple',
       ]);
       expect(flutterLogin.loginProviders.last.button, Buttons.apple);
     },
@@ -122,7 +122,10 @@ void main() {
         matching: find.byType(MaterialButton),
       ),
     );
-    expect(buttonSize('Continue with Google'), buttonSize('Apple'));
+    expect(
+      buttonSize('Continue with Google'),
+      buttonSize('Continue with Apple'),
+    );
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 30));
@@ -136,7 +139,10 @@ void main() {
       tester,
       const LoginPage(title: 'Test App'),
     );
-    expect(flutterLogin.loginProviders.any((p) => p.label == 'Apple'), isFalse);
+    expect(
+      flutterLogin.loginProviders.any((p) => p.label == 'Continue with Apple'),
+      isFalse,
+    );
   });
 
   testWidgets(
@@ -344,7 +350,7 @@ void main() {
       when(
         mockAuthService.initiateAppleLogin(),
       ).thenAnswer((_) async => const SignInSucceeded());
-      final apple = await providerNamed(tester, 'Apple');
+      final apple = await providerNamed(tester, 'Continue with Apple');
       expect(await apple.callback(), isNull);
     });
 
@@ -353,7 +359,7 @@ void main() {
       when(
         mockAuthService.initiateAppleLogin(),
       ).thenAnswer((_) async => const SignInCancelled());
-      final apple = await providerNamed(tester, 'Apple');
+      final apple = await providerNamed(tester, 'Continue with Apple');
       final error = await apple.callback();
       expect(error, isNotNull);
       expect(apple.errorsToExcludeFromErrorMessage, contains(error));
@@ -364,7 +370,7 @@ void main() {
       when(
         mockAuthService.initiateAppleLogin(),
       ).thenAnswer((_) async => const SignInFailed("Couldn't sign in. Try again."));
-      final apple = await providerNamed(tester, 'Apple');
+      final apple = await providerNamed(tester, 'Continue with Apple');
       final error = await apple.callback();
       expect(error, "Couldn't sign in. Try again.");
       expect(apple.errorsToExcludeFromErrorMessage, isNot(contains(error)));
@@ -508,7 +514,7 @@ void main() {
       expect(flutterLogin.hideUserNamePasswordLogin, isTrue);
       expect(flutterLogin.loginProviders.map((p) => p.label), [
         'Continue with Google',
-        'Apple',
+        'Continue with Apple',
       ]);
     },
   );
