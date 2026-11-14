@@ -147,7 +147,10 @@ class LoginPage extends StatelessWidget {
       providers.add(
         LoginProvider(
           button: Buttons.apple,
-          icon: Icons.apple,
+          // The Apple glyph fills only about 13x16 of its 20px box, so at the
+          // row's icon size it reads smaller than the full-box Google logo.
+          // Scaling it up makes its height match.
+          iconWidget: const _AppleLogo(),
           label: 'Continue with Apple',
           // Sign in with Apple is native and resolves fully inside the
           // callback, so success here is real and the post-login transition is
@@ -200,6 +203,23 @@ class LoginPage extends StatelessWidget {
           child: Align(alignment: Alignment.topLeft, child: corner),
         ),
       ],
+    );
+  }
+}
+
+/// The Apple glyph at a size that matches the Google logo's visual weight.
+class _AppleLogo extends StatelessWidget {
+  const _AppleLogo();
+
+  @override
+  Widget build(BuildContext context) {
+    return Transform.scale(
+      scale: 1.25,
+      child: Icon(
+        Icons.apple,
+        size: 20,
+        color: Theme.of(context).colorScheme.onSurface,
+      ),
     );
   }
 }
