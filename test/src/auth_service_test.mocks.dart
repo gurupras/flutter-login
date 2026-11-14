@@ -725,6 +725,7 @@ class MockFusionAuthClient extends _i1.Mock implements _i13.FusionAuthClient {
     required String? authorizationCode,
     required String? identityProviderId,
     required String? redirectUri,
+    Map<String, String>? device,
   }) =>
       (super.noSuchMethod(
             Invocation.method(#appleIdpLogin, [], {
@@ -732,6 +733,7 @@ class MockFusionAuthClient extends _i1.Mock implements _i13.FusionAuthClient {
               #authorizationCode: authorizationCode,
               #identityProviderId: identityProviderId,
               #redirectUri: redirectUri,
+              #device: device,
             }),
             returnValue: _i8.Future<_i4.TokenResponse>.value(
               _FakeTokenResponse_9(
@@ -741,6 +743,7 @@ class MockFusionAuthClient extends _i1.Mock implements _i13.FusionAuthClient {
                   #authorizationCode: authorizationCode,
                   #identityProviderId: identityProviderId,
                   #redirectUri: redirectUri,
+                  #device: device,
                 }),
               ),
             ),
@@ -751,11 +754,13 @@ class MockFusionAuthClient extends _i1.Mock implements _i13.FusionAuthClient {
   _i8.Future<_i4.TokenResponse> googleIdpLogin({
     required String? idToken,
     required String? identityProviderId,
+    Map<String, String>? device,
   }) =>
       (super.noSuchMethod(
             Invocation.method(#googleIdpLogin, [], {
               #idToken: idToken,
               #identityProviderId: identityProviderId,
+              #device: device,
             }),
             returnValue: _i8.Future<_i4.TokenResponse>.value(
               _FakeTokenResponse_9(
@@ -763,6 +768,7 @@ class MockFusionAuthClient extends _i1.Mock implements _i13.FusionAuthClient {
                 Invocation.method(#googleIdpLogin, [], {
                   #idToken: idToken,
                   #identityProviderId: identityProviderId,
+                  #device: device,
                 }),
               ),
             ),

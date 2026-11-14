@@ -135,6 +135,7 @@ class FusionAuthClient {
     required String authorizationCode,
     required String identityProviderId,
     required String redirectUri,
+    Map<String, String>? device,
   }) async {
     final result = await _client.post(
       Uri.parse('$_origin/api/identity-provider/login'),
@@ -148,6 +149,7 @@ class FusionAuthClient {
           'redirect_uri': redirectUri,
           'isNativeApp': 'true',
         },
+        if (device != null) 'metaData': {'device': device},
       }),
     );
     if (result.statusCode == 200) {
@@ -179,6 +181,7 @@ class FusionAuthClient {
   Future<TokenResponse> googleIdpLogin({
     required String idToken,
     required String identityProviderId,
+    Map<String, String>? device,
   }) async {
     final result = await _client.post(
       Uri.parse('$_origin/api/identity-provider/login'),
@@ -187,6 +190,7 @@ class FusionAuthClient {
         'applicationId': clientID,
         'identityProviderId': identityProviderId,
         'data': {'token': idToken},
+        if (device != null) 'metaData': {'device': device},
       }),
     );
     if (result.statusCode == 200) {

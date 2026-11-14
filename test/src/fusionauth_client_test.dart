@@ -73,6 +73,41 @@ void main() {
       ).called(1);
     });
 
+    test('login sends the device it is given', () async {
+      when(
+        mockHttpClient.post(
+          any,
+          headers: anyNamed('headers'),
+          body: anyNamed('body'),
+        ),
+      ).thenAnswer(
+        (_) async => http.Response(
+          json.encode({'access_token': 'a', 'refresh_token': 'r'}),
+          200,
+        ),
+      );
+
+      await fusionAuthClient.login(
+        username: 'test@example.com',
+        password: 'password123',
+        device: const LoginDevice(
+          name: 'Chrome on Windows',
+          type: LoginDeviceType.browser,
+        ).toJson(),
+      );
+
+      final body = json.decode(
+        verify(
+          mockHttpClient.post(
+            any,
+            headers: anyNamed('headers'),
+            body: captureAnyNamed('body'),
+          ),
+        ).captured.single as String,
+      );
+      expect(body['device'], {'name': 'Chrome on Windows', 'type': 'BROWSER'});
+    });
+
     test('login throws error on failure', () async {
       when(
         mockHttpClient.post(
@@ -391,6 +426,43 @@ void main() {
             }),
           ),
         ).called(1);
+      });
+
+      test('names the device in metaData when one is given', () async {
+        when(
+          mockHttpClient.post(
+            any,
+            headers: anyNamed('headers'),
+            body: anyNamed('body'),
+          ),
+        ).thenAnswer(
+          (_) async => http.Response(
+            json.encode({'token': 't', 'refreshToken': 'r', 'userId': 'u'}),
+            200,
+          ),
+        );
+
+        await fusionAuthClient.googleIdpLogin(
+          idToken: 'google_id_token',
+          identityProviderId: 'google-idp-uuid',
+          device: const LoginDevice(
+            name: 'Pixel 8',
+            type: LoginDeviceType.mobile,
+          ).toJson(),
+        );
+
+        final body = json.decode(
+          verify(
+            mockHttpClient.post(
+              any,
+              headers: anyNamed('headers'),
+              body: captureAnyNamed('body'),
+            ),
+          ).captured.single as String,
+        );
+        expect(body['metaData'], {
+          'device': {'name': 'Pixel 8', 'type': 'MOBILE'},
+        });
       });
 
       test('throws on non-200 response', () async {

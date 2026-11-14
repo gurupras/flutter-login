@@ -250,6 +250,50 @@ void main() {
         },
       );
 
+      // The server's /login/login lets a stored credential blob override the
+      // typed email and password. A typed sign-in must never send one, or it
+      // lands in the blob's account.
+      test('a typed sign-in never sends the stored credential blob', () async {
+        when(
+          mockFusionAuthClient.login(
+            username: anyNamed('username'),
+            password: anyNamed('password'),
+            scope: anyNamed('scope'),
+            lastLoginCredentials: anyNamed('lastLoginCredentials'),
+            device: anyNamed('device'),
+          ),
+        ).thenAnswer(
+          (_) async => LoginResponse(
+            accessToken: 'access',
+            idToken: 'id_token',
+            refreshToken: 'refresh',
+            lastLoginCredentials: 'stored-blob',
+            user: {'id': 'user123'},
+          ),
+        );
+        when(mockJwtDecoder.decode('access')).thenReturn({
+          'sub': 'user123',
+          'exp': (DateTime.now().millisecondsSinceEpoch ~/ 1000) + 3600,
+        });
+        when(
+          mockSecureStorage.write(key: anyNamed('key'), value: anyNamed('value')),
+        ).thenAnswer((_) async => {});
+
+        await authService.login('first@example.com', 'pass');
+        expect(authService.lastLoginCredentials, 'stored-blob');
+        await authService.login('second@example.com', 'other');
+
+        verify(
+          mockFusionAuthClient.login(
+            username: 'second@example.com',
+            password: 'other',
+            scope: 'openid email offline_access',
+            lastLoginCredentials: null,
+            device: anyNamed('device'),
+          ),
+        ).called(1);
+      });
+
       group('currentEmail', () {
         void stubLogin(LoginResponse response) {
           when(

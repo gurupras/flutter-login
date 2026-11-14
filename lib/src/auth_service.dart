@@ -438,17 +438,35 @@ class AuthService {
     }
   }
 
+  /// The app's description of this device for a sign-in, as the server's
+  /// `metaData.device` JSON. Null when the app gives none or describing fails:
+  /// a sign-in never fails because the device could not be named.
+  Future<Map<String, String>?> _describeDevice() async {
+    final describe = _config.describeDevice;
+    if (describe == null) return null;
+    try {
+      return (await describe())?.toJson();
+    } catch (e) {
+      log.w('Could not describe this device for sign-in: $e');
+      return null;
+    }
+  }
+
   /// Email and password sign-in. Never throws: a failure comes back as
   /// [SignInFailed] carrying a message safe to show.
   Future<SignInResult> login(String username, String password) async {
     final attempt = _signInAttempt;
     try {
+      final device = await _describeDevice();
       final response = await _fusionAuthClient
           .login(
             username: username,
             password: password,
             scope: 'openid email offline_access',
-            lastLoginCredentials: _currentLastLoginCredentials,
+            device: device ?? const {},
+            // Never the stored credential blob: the server's /login/login
+            // lets the blob override the typed email and password, so a typed
+            // sign-in would land in whatever account the blob holds.
           )
           .timeout(_signInTimeLimit);
       if (attempt != _signInAttempt) return const SignInCancelled();
@@ -548,6 +566,7 @@ class AuthService {
         authorizationCode: credential.authorizationCode,
         identityProviderId: appleIdpID,
         redirectUri: appleBundleID,
+        device: await _describeDevice(),
       );
       if (attempt != _signInAttempt) return const SignInCancelled();
       await _replaceSessionWithTokens(tokens);
@@ -607,6 +626,7 @@ class AuthService {
       final tokens = await _fusionAuthClient.googleIdpLogin(
         idToken: idToken,
         identityProviderId: googleIdpID,
+        device: await _describeDevice(),
       );
       if (attempt != _signInAttempt) return const SignInCancelled();
       await _replaceSessionWithTokens(tokens);
@@ -639,9 +659,12 @@ class AuthService {
       final String origin = _config.loginDomain.contains('://')
           ? _config.loginDomain
           : 'https://${_config.loginDomain}';
+      final device = await _describeDevice();
 
       final Uri authUri = Uri.parse('$origin/oauth2/authorize').replace(
         queryParameters: {
+          if (device != null) 'metaData.device.name': device['name']!,
+          if (device != null) 'metaData.device.type': device['type']!,
           'client_id': _config.loginClientID,
           'redirect_uri': _config.loginRedirectURI,
           'response_type': 'code',

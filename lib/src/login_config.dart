@@ -1,3 +1,30 @@
+/// The kind of device a sign-in comes from, as FusionAuth's
+/// `metaData.device.type` names it.
+enum LoginDeviceType {
+  mobile('MOBILE'),
+  tablet('TABLET'),
+  desktop('DESKTOP'),
+  browser('BROWSER');
+
+  const LoginDeviceType(this.wire);
+
+  /// The value sent to the server.
+  final String wire;
+}
+
+/// How a sign-in names the device it comes from, so a list of the account's
+/// sessions can show "Pixel 8" instead of "Unknown device". Stored by
+/// FusionAuth on the session's refresh token (`metaData.device`).
+class LoginDevice {
+  const LoginDevice({required this.name, required this.type});
+
+  /// Shown to the person, e.g. "Pixel 8" or "Chrome on Windows".
+  final String name;
+  final LoginDeviceType type;
+
+  Map<String, String> toJson() => {'name': name, 'type': type.wire};
+}
+
 class LoginConfig {
   final String loginDomain;
   final String signupOrigin;
@@ -46,6 +73,12 @@ class LoginConfig {
 
   final String? appID; // Optional, for device ID generation if needed
 
+  /// Names this device on every sign-in (email, browser, native Google and
+  /// Apple). Optional; null or a failure sends no device, which the server
+  /// shows as an unknown device. Never called for a token refresh, which is
+  /// not a sign-in and creates no session.
+  final Future<LoginDevice?> Function()? describeDevice;
+
   LoginConfig({
     required this.loginDomain,
     required this.signupOrigin,
@@ -59,5 +92,6 @@ class LoginConfig {
     this.googleIosClientId,
     this.useNativeGoogle = true,
     this.appID,
+    this.describeDevice,
   });
 }

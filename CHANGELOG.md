@@ -1,3 +1,15 @@
+## 0.21.0
+
+- `LoginConfig.describeDevice` names the device on every sign-in: email
+  (`device`), browser (`metaData.device.*` on `/oauth2/authorize`), native
+  Google and Apple (`metaData.device`). A session list can then show
+  "Pixel 8" instead of an unknown device. Optional; a failure to describe
+  never fails the sign-in.
+- Fix: email and password sign-in no longer sends the stored
+  `lastLoginCredentials`. The server lets that blob override the typed email
+  and password, so a typed sign-in could land in the previous account or
+  ignore a changed password.
+
 ## 0.20.1
 
 - The default Apple button reads "Continue with Apple", one of the labels
